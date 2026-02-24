@@ -1,26 +1,207 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #FAFAF9;
+  color: #1C1917;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Registration / join page shared styles */
+.page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, #EFF6FF 0%, #FAFAF9 50%, #F0FDF4 100%);
+}
+
+.card {
+  max-width: 560px;
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
+  border: 1px solid #E7E5E4;
+  text-align: center;
+}
+
+.pill {
+  display: inline-block;
+  background: #EFF6FF;
+  color: #2563EB;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 100px;
+  margin-bottom: 20px;
+}
+
+.pill-green {
+  background: #F0FDF4;
+  color: #16A34A;
+}
+
+.pill-amber {
+  background: #FFFBEB;
+  color: #D97706;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 900;
+  color: #2563EB;
+  letter-spacing: -0.5px;
+  margin-bottom: 32px;
+}
+
+h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #1C1917;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: #78716C;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #2563EB;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 14px 28px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: 28px;
+  width: 100%;
+  transition: background 0.15s;
+}
+
+.btn-primary:hover {
+  background: #1D4ED8;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: #78716C;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 24px;
+  border-radius: 14px;
+  border: 1.5px solid #E7E5E4;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: 10px;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.btn-secondary:hover {
+  border-color: #A8A29E;
+}
+
+.divider {
+  height: 1px;
+  background: #F5F5F4;
+  margin: 28px 0;
+}
+
+.store-badges {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.store-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1C1917;
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.store-badge:hover {
+  background: #292524;
+}
+
+.code-box {
+  background: #F5F5F4;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 20px 0;
+  font-family: monospace;
+  font-size: 22px;
+  font-weight: 800;
+  color: #2563EB;
+  letter-spacing: 3px;
+}
+
+/* Registration page (old style compat) */
+.registration-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #EFF6FF 0%, #FAFAF9 50%, #F0FDF4 100%);
+  padding: 2rem;
+}
+
+.registration-card {
+  max-width: 560px;
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
+  border: 1px solid #E7E5E4;
+}
+
+.registration-pill {
+  display: inline-block;
+  background: #EFF6FF;
+  color: #2563EB;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 100px;
+  margin-bottom: 16px;
+}
+
+.registration-description {
+  color: #78716C;
+  line-height: 1.6;
+  margin-top: 8px;
 }

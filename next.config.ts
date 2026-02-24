@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Zorg dat /join/* niet conflicteert met /[slug]
+  // De volgorde in de app/ directory bepaalt prioriteit
 };
 
 export default nextConfig;
