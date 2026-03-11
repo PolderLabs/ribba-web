@@ -2,39 +2,70 @@
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  background: #FAFAF9;
-  color: #1C1917;
+  background: #f8fafc;
+  color: #1e293b;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Registration / join page shared styles */
+/* ─── Shared layout ──────────────────────────────── */
+
 .page-wrapper {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: linear-gradient(135deg, #EFF6FF 0%, #FAFAF9 50%, #F0FDF4 100%);
+  background: linear-gradient(135deg, #f0fdfa 0%, #f8fafc 50%, #f0fdf4 100%);
 }
 
 .card {
-  max-width: 560px;
+  max-width: 640px;
   width: 100%;
-  background: #FFFFFF;
+  background: #ffffff;
   border-radius: 24px;
   padding: 40px;
-  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
-  border: 1px solid #E7E5E4;
+  box-shadow: 0 20px 60px rgba(13, 148, 136, 0.08);
+  border: 1px solid #e2e8f0;
   text-align: center;
 }
 
+/* ─── Logo ───────────────────────────────────────── */
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 900;
+  color: #0d9488;
+  letter-spacing: -0.5px;
+  margin-bottom: 32px;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  background: #0d9488;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+/* ─── Pills / badges ────────────────────────────── */
+
 .pill {
   display: inline-block;
-  background: #EFF6FF;
-  color: #2563EB;
+  background: #f0fdfa;
+  color: #0d9488;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -45,49 +76,50 @@ body {
 }
 
 .pill-green {
-  background: #F0FDF4;
-  color: #16A34A;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .pill-amber {
-  background: #FFFBEB;
-  color: #D97706;
+  background: #fffbeb;
+  color: #d97706;
 }
 
-.logo {
-  font-size: 20px;
-  font-weight: 900;
-  color: #2563EB;
-  letter-spacing: -0.5px;
-  margin-bottom: 32px;
+.pill-red {
+  background: #fef2f2;
+  color: #dc2626;
 }
+
+/* ─── Typography ─────────────────────────────────── */
 
 h1 {
   font-size: 28px;
   font-weight: 800;
-  color: #1C1917;
+  color: #1e293b;
   letter-spacing: -0.5px;
   line-height: 1.2;
   margin-bottom: 12px;
 }
 
 .subtitle {
-  color: #78716C;
+  color: #64748b;
   line-height: 1.6;
   font-size: 15px;
 }
+
+/* ─── Buttons ────────────────────────────────────── */
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #2563EB;
+  background: #0d9488;
   color: #fff;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
   padding: 14px 28px;
-  border-radius: 14px;
+  border-radius: 12px;
   border: none;
   cursor: pointer;
   text-decoration: none;
@@ -97,7 +129,12 @@ h1 {
 }
 
 .btn-primary:hover {
-  background: #1D4ED8;
+  background: #0f766e;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -106,12 +143,12 @@ h1 {
   justify-content: center;
   gap: 8px;
   background: transparent;
-  color: #78716C;
+  color: #64748b;
   font-weight: 600;
   font-size: 14px;
   padding: 12px 24px;
-  border-radius: 14px;
-  border: 1.5px solid #E7E5E4;
+  border-radius: 12px;
+  border: 1.5px solid #e2e8f0;
   cursor: pointer;
   text-decoration: none;
   margin-top: 10px;
@@ -120,14 +157,18 @@ h1 {
 }
 
 .btn-secondary:hover {
-  border-color: #A8A29E;
+  border-color: #94a3b8;
 }
+
+/* ─── Divider ────────────────────────────────────── */
 
 .divider {
   height: 1px;
-  background: #F5F5F4;
+  background: #f1f5f9;
   margin: 28px 0;
 }
+
+/* ─── Store badges ───────────────────────────────── */
 
 .store-badges {
   display: flex;
@@ -141,7 +182,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #1C1917;
+  background: #1e293b;
   color: #fff;
   text-decoration: none;
   padding: 10px 20px;
@@ -152,45 +193,67 @@ h1 {
 }
 
 .store-badge:hover {
-  background: #292524;
+  background: #334155;
 }
 
+/* ─── Code box ───────────────────────────────────── */
+
 .code-box {
-  background: #F5F5F4;
+  background: #f0fdfa;
   border-radius: 12px;
   padding: 16px;
   margin: 20px 0;
   font-family: monospace;
   font-size: 22px;
   font-weight: 800;
-  color: #2563EB;
+  color: #0d9488;
   letter-spacing: 3px;
 }
 
-/* Registration page (old style compat) */
+/* ─── Registration page ─────────────────────────── */
+
 .registration-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #EFF6FF 0%, #FAFAF9 50%, #F0FDF4 100%);
+  background: linear-gradient(135deg, #f0fdfa 0%, #f8fafc 50%, #f0fdf4 100%);
   padding: 2rem;
 }
 
 .registration-card {
-  max-width: 560px;
+  max-width: 640px;
   width: 100%;
-  background: #FFFFFF;
+  background: #ffffff;
   border-radius: 24px;
   padding: 40px;
-  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
-  border: 1px solid #E7E5E4;
+  box-shadow: 0 20px 60px rgba(13, 148, 136, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+.registration-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.registration-brand .logo-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.registration-brand span {
+  font-size: 20px;
+  font-weight: 900;
+  color: #0d9488;
+  letter-spacing: -0.5px;
 }
 
 .registration-pill {
   display: inline-block;
-  background: #EFF6FF;
-  color: #2563EB;
+  background: #f0fdfa;
+  color: #0d9488;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -201,7 +264,152 @@ h1 {
 }
 
 .registration-description {
-  color: #78716C;
+  color: #64748b;
   line-height: 1.6;
   margin-top: 8px;
+  font-size: 15px;
+}
+
+/* ─── Form styles ────────────────────────────────── */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.form-grid .form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 520px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 6px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #1e293b;
+  background: #fff;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+
+.form-group input::placeholder {
+  color: #94a3b8;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #0d9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+}
+
+.form-group input.error,
+.form-group select.error {
+  border-color: #dc2626;
+}
+
+.form-error {
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.form-submit {
+  margin-top: 28px;
+}
+
+/* ─── Alerts ─────────────────────────────────────── */
+
+.alert {
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 20px;
+}
+
+.alert-success {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+.alert-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.alert-info {
+  background: #f0fdfa;
+  color: #0d9488;
+  border: 1px solid #99f6e4;
+}
+
+/* ─── Loading spinner ────────────────────────────── */
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── Link styling ───────────────────────────────── */
+
+a.text-link {
+  color: #0d9488;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.text-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Footer text ────────────────────────────────── */
+
+.footer-text {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.footer-text a {
+  color: #0d9488;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.footer-text a:hover {
+  text-decoration: underline;
 }
