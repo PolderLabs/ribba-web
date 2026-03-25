@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const premiumFeatures = [
@@ -43,6 +43,25 @@ function UpgradeContent() {
   const schoolId = searchParams.get('school_id');
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+  const [isTrial, setIsTrial] = useState(false);
+  const [planLoading, setPlanLoading] = useState(true);
+
+  // Fetch current plan
+  useEffect(() => {
+    if (!schoolId) {
+      setPlanLoading(false);
+      return;
+    }
+    fetch(`/api/current-plan?school_id=${schoolId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setCurrentPlan(data.plan);
+        setIsTrial(data.isTrial || false);
+      })
+      .catch(() => {})
+      .finally(() => setPlanLoading(false));
+  }, [schoolId]);
 
   const handleCheckout = async (plan: 'basic' | 'premium') => {
     if (!schoolId) {
@@ -75,15 +94,33 @@ function UpgradeContent() {
     }
   };
 
+  const isCurrentPlan = (plan: string) => {
+    if (isTrial) return false;
+    return currentPlan === plan;
+  };
+
+  const canUpgradeTo = (plan: string) => {
+    if (isTrial) return true;
+    if (!currentPlan) return true;
+    if (plan === 'premium' && currentPlan === 'basic') return true;
+    return false;
+  };
+
+  // Header text based on plan
+  const headerTitle = currentPlan && !isTrial ? 'Jouw abonnement' : 'Kies je plan';
+  const headerSubtitle = currentPlan && !isTrial
+    ? `Je hebt momenteel het ${currentPlan === 'premium' ? 'Premium' : 'Basic'} abonnement.`
+    : 'Start gratis of kies direct het plan dat bij je rijschool past.';
+
   return (
     <main className="upgrade-page">
       <div className="upgrade-container">
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div className="logo">Ribba</div>
-          <h1 style={{ fontSize: 36, marginBottom: 8 }}>Kies je plan</h1>
+          <h1 style={{ fontSize: 36, marginBottom: 8 }}>{headerTitle}</h1>
           <p className="subtitle">
-            Start gratis of kies direct het plan dat bij je rijschool past.
+            {planLoading ? 'Laden...' : headerSubtitle}
           </p>
         </div>
 
@@ -97,7 +134,8 @@ function UpgradeContent() {
         {/* Plan Cards */}
         <div className="plans-grid plans-grid-3">
           {/* Trial */}
-          <div className="plan-card plan-card-trial">
+          <div className={`plan-card plan-card-trial${isTrial ? ' plan-card-current' : ''}`}>
+            {isTrial && <div className="plan-current-badge">Huidig</div>}
             <div className="plan-header">
               <span className="pill pill-green">Gratis</span>
               <div className="plan-price">
@@ -118,18 +156,25 @@ function UpgradeContent() {
               ))}
             </div>
 
-            <button
-              className="btn-trial"
-              style={{ marginTop: 'auto' }}
-              onClick={() => handleCheckout('premium')}
-              disabled={loading !== null}
-            >
-              {loading === 'premium' ? 'Bezig...' : 'Start gratis'}
-            </button>
+            {isTrial ? (
+              <div className="btn-current">Huidig abonnement</div>
+            ) : !currentPlan ? (
+              <button
+                className="btn-trial"
+                style={{ marginTop: 'auto' }}
+                onClick={() => handleCheckout('premium')}
+                disabled={loading !== null}
+              >
+                {loading === 'premium' ? 'Bezig...' : 'Start gratis'}
+              </button>
+            ) : (
+              <div style={{ marginTop: 'auto' }} />
+            )}
           </div>
 
           {/* Basic Plan */}
-          <div className="plan-card">
+          <div className={`plan-card${isCurrentPlan('basic') ? ' plan-card-current' : ''}`}>
+            {isCurrentPlan('basic') && <div className="plan-current-badge">Huidig</div>}
             <div className="plan-header">
               <span className="pill">Basic</span>
               <div className="plan-price">
@@ -150,19 +195,29 @@ function UpgradeContent() {
               ))}
             </div>
 
-            <button
-              className="btn-secondary"
-              style={{ marginTop: 'auto' }}
-              onClick={() => handleCheckout('basic')}
-              disabled={loading !== null}
-            >
-              {loading === 'basic' ? 'Bezig...' : 'Kies Basic'}
-            </button>
+            {isCurrentPlan('basic') ? (
+              <div className="btn-current">Huidig abonnement</div>
+            ) : canUpgradeTo('basic') ? (
+              <button
+                className="btn-secondary"
+                style={{ marginTop: 'auto' }}
+                onClick={() => handleCheckout('basic')}
+                disabled={loading !== null}
+              >
+                {loading === 'basic' ? 'Bezig...' : 'Kies Basic'}
+              </button>
+            ) : (
+              <div style={{ marginTop: 'auto' }} />
+            )}
           </div>
 
           {/* Premium Plan */}
-          <div className="plan-card plan-card-premium">
-            <div className="plan-popular">Meest gekozen</div>
+          <div className={`plan-card plan-card-premium${isCurrentPlan('premium') ? ' plan-card-current-premium' : ''}`}>
+            {isCurrentPlan('premium') ? (
+              <div className="plan-current-badge plan-current-badge-premium">Huidig</div>
+            ) : (
+              <div className="plan-popular">Meest gekozen</div>
+            )}
             <div className="plan-header">
               <span className="pill pill-premium">Premium</span>
               <div className="plan-price">
@@ -197,14 +252,20 @@ function UpgradeContent() {
               ))}
             </div>
 
-            <button
-              className="btn-primary"
-              style={{ marginTop: 'auto' }}
-              onClick={() => handleCheckout('premium')}
-              disabled={loading !== null}
-            >
-              {loading === 'premium' ? 'Bezig...' : 'Kies Premium'}
-            </button>
+            {isCurrentPlan('premium') ? (
+              <div className="btn-current btn-current-premium">Huidig abonnement</div>
+            ) : canUpgradeTo('premium') ? (
+              <button
+                className="btn-primary"
+                style={{ marginTop: 'auto' }}
+                onClick={() => handleCheckout('premium')}
+                disabled={loading !== null}
+              >
+                {loading === 'premium' ? 'Bezig...' : (currentPlan === 'basic' ? 'Upgrade naar Premium' : 'Kies Premium')}
+              </button>
+            ) : (
+              <div style={{ marginTop: 'auto' }} />
+            )}
           </div>
         </div>
 

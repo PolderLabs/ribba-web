@@ -647,6 +647,57 @@ a.text-link:hover {
   line-height: 1.6;
 }
 
+/* Current plan indicator */
+.plan-card-current {
+  border-color: #16A34A;
+  border-width: 2px;
+}
+
+.plan-card-current-premium {
+  border-color: #2563EB;
+  border-width: 2px;
+}
+
+.plan-current-badge {
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #16A34A;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 4px 16px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.plan-current-badge-premium {
+  background: #2563EB;
+}
+
+.btn-current {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F0FDF4;
+  color: #16A34A;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 14px 28px;
+  border-radius: 12px;
+  border: 1.5px solid #BBF7D0;
+  margin-top: auto;
+  width: 100%;
+}
+
+.btn-current-premium {
+  background: #EFF6FF;
+  color: #2563EB;
+  border-color: #BFDBFE;
+}
+
 .checkout-error {
   background: #FEF2F2;
   border: 1px solid #FECACA;
