@@ -1,16 +1,8 @@
 'use client';
 
-import { useState, useCallback, useRef, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
 import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
-
-type Company = {
-  name: string;
-  kvk_number: string;
-  address: string;
-  postal_code: string;
-  city: string;
-};
 
 type FormData = {
   school_name: string;
@@ -51,70 +43,6 @@ export default function SchoolRegistrationForm() {
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  // KVK search state
-  const [kvkSearching, setKvkSearching] = useState(false);
-  const [kvkResults, setKvkResults] = useState<Company[]>([]);
-  const [kvkSelected, setKvkSelected] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const searchKvk = useCallback(async (query: string) => {
-    if (query.trim().length < 3) {
-      setKvkResults([]);
-      setShowResults(false);
-      return;
-    }
-
-    setKvkSearching(true);
-    try {
-      const res = await fetch(`/api/kvk-lookup?q=${encodeURIComponent(query.trim())}`);
-      const data = await res.json();
-      setKvkResults(data.results || []);
-      setShowResults(true);
-    } catch {
-      setKvkResults([]);
-    } finally {
-      setKvkSearching(false);
-    }
-  }, []);
-
-  const handleNameChange = useCallback((value: string) => {
-    handleChange('school_name', value);
-    setKvkSelected(false);
-
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (value.trim().length >= 3) {
-      searchTimeout.current = setTimeout(() => searchKvk(value), 400);
-    } else {
-      setKvkResults([]);
-      setShowResults(false);
-    }
-  }, [searchKvk]);
-
-  const selectCompany = useCallback((company: Company) => {
-    setForm((prev) => ({
-      ...prev,
-      school_name: company.name,
-      kvk_number: company.kvk_number,
-      address: company.address,
-      postal_code: company.postal_code,
-      city: company.city,
-    }));
-    setKvkSelected(true);
-    setShowResults(false);
-    setKvkResults([]);
-    // Clear related errors
-    setErrors((prev) => {
-      const next = { ...prev };
-      delete next.school_name;
-      delete next.kvk_number;
-      delete next.address;
-      delete next.postal_code;
-      delete next.city;
-      return next;
-    });
-  }, []);
-
   function validate(): FormErrors {
     const e: FormErrors = {};
 
@@ -150,7 +78,6 @@ export default function SchoolRegistrationForm() {
       e.kvk_number = 'KVK-nummer moet 8 cijfers zijn';
     }
 
-    // BTW is optional
     if (form.btw_number.trim() && !/^NL\d{9}B\d{2}$/.test(form.btw_number.replace(/\s/g, '').toUpperCase())) {
       e.btw_number = 'Ongeldig BTW-nummer (bijv. NL123456789B01)';
     }
@@ -242,105 +169,18 @@ export default function SchoolRegistrationForm() {
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="form-grid">
-        {/* Naam rijschool — met KVK zoekfunctie */}
-        <div className="form-group full-width" style={{ position: 'relative' }}>
+        {/* Naam rijschool */}
+        <div className="form-group full-width">
           <label htmlFor="school_name">Naam rijschool</label>
-          <div style={{ position: 'relative' }}>
-            <input
-              id="school_name"
-              type="text"
-              placeholder="Zoek je rijschool..."
-              autoComplete="off"
-              className={errors.school_name ? 'error' : ''}
-              value={form.school_name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              onFocus={() => { if (kvkResults.length > 0) setShowResults(true); }}
-              onBlur={() => setTimeout(() => setShowResults(false), 200)}
-            />
-            {kvkSearching && (
-              <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
-                <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderColor: 'rgba(37,99,235,0.2)', borderTopColor: '#2563EB' }} />
-              </div>
-            )}
-          </div>
+          <input
+            id="school_name"
+            type="text"
+            placeholder="Rijschool Voorbeeld"
+            className={errors.school_name ? 'error' : ''}
+            value={form.school_name}
+            onChange={(e) => handleChange('school_name', e.target.value)}
+          />
           {errors.school_name && <p className="form-error">{errors.school_name}</p>}
-
-          {kvkSelected && form.kvk_number && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginTop: 6,
-              fontSize: 12,
-              color: '#16A34A',
-              fontWeight: 600,
-            }}>
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill="#16A34A" />
-              </svg>
-              KVK {form.kvk_number} — gegevens overgenomen
-            </div>
-          )}
-
-          {/* Dropdown met zoekresultaten */}
-          {showResults && kvkResults.length > 0 && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
-              background: '#fff',
-              border: '1.5px solid #BFDBFE',
-              borderRadius: 12,
-              boxShadow: '0 12px 40px rgba(37,99,235,0.12)',
-              zIndex: 50,
-              marginTop: 4,
-              overflow: 'hidden',
-            }}>
-              <div style={{ padding: '8px 14px', fontSize: 11, color: '#78716C', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #F5F5F4' }}>
-                Gevonden in KVK register
-              </div>
-              {kvkResults.map((company, i) => (
-                <button
-                  key={`${company.kvk_number}-${i}`}
-                  type="button"
-                  onClick={() => selectCompany(company)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    width: '100%',
-                    padding: '12px 14px',
-                    background: 'transparent',
-                    border: 'none',
-                    borderBottom: i < kvkResults.length - 1 ? '1px solid #F5F5F4' : 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontSize: 14,
-                    color: '#1C1917',
-                    transition: 'background 0.1s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#EFF6FF')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>🏢</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <strong style={{ display: 'block' }}>{company.name}</strong>
-                    <span style={{ fontSize: 12, color: '#78716C' }}>
-                      KVK {company.kvk_number}
-                      {company.city ? ` · ${company.city}` : ''}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {showResults && kvkResults.length === 0 && !kvkSearching && form.school_name.trim().length >= 3 && (
-            <p style={{ fontSize: 12, color: '#78716C', marginTop: 4 }}>
-              Niet gevonden? Vul de gegevens handmatig in.
-            </p>
-          )}
         </div>
 
         {/* Voornaam */}
@@ -441,7 +281,7 @@ export default function SchoolRegistrationForm() {
           {errors.city && <p className="form-error">{errors.city}</p>}
         </div>
 
-        {/* KVK (auto-filled or manual) */}
+        {/* KVK */}
         <div className="form-group">
           <label htmlFor="kvk_number">KVK-nummer</label>
           <input
