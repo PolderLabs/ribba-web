@@ -1,0 +1,110 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createMollieClient } from '@mollie/api-client';
+import { createClient } from '@supabase/supabase-js';
+
+function getMollie() {
+  return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
+}
+
+function getSupabase() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
+
+const PLAN_AMOUNTS: Record<string, string> = {
+  basic: '29.00',
+  premium: '59.00',
+};
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.formData();
+    const paymentId = body.get('id') as string;
+
+    if (!paymentId) {
+      return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
+    }
+
+    const payment = await getMollie().payments.get(paymentId);
+    const metadata = JSON.parse((payment.metadata as string) || '{}');
+    const { school_id, plan, type } = metadata;
+
+    if (!school_id || !plan) {
+      console.error('Webhook: missing metadata', metadata);
+      return NextResponse.json({ status: 'ok' });
+    }
+
+    // Only process paid first payments (subscription setup)
+    if (payment.status === 'paid' && type === 'subscription_setup') {
+      // Get the license record
+      const { data: license } = await getSupabase()
+        .from('instructor_licenses')
+        .select('id, mollie_customer_id')
+        .eq('school_id', school_id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const customerId = license?.mollie_customer_id || payment.customerId;
+
+      if (customerId) {
+        // Create recurring subscription
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+          const subscription = await getMollie().customerSubscriptions.create({
+            customerId,
+            amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] || '59.00' },
+            interval: '1 month',
+            description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
+            webhookUrl: `${baseUrl}/api/mollie-webhook`,
+            metadata: JSON.stringify({ school_id, plan, type: 'recurring' }),
+          });
+
+          // Update license with subscription info
+          await getSupabase()
+            .from('instructor_licenses')
+            .update({
+              billing_plan: plan,
+              external_subscription_id: subscription.id,
+              mollie_customer_id: customerId,
+              is_trial: false,
+              price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '59'),
+            })
+            .eq('id', license?.id);
+
+          console.log(`Subscription ${subscription.id} created for school ${school_id}`);
+        } catch (subError) {
+          console.error('Failed to create subscription:', subError);
+        }
+      }
+
+      // Update license plan regardless (in case subscription creation fails)
+      if (license) {
+        await getSupabase()
+          .from('instructor_licenses')
+          .update({
+            billing_plan: plan,
+            is_trial: false,
+            price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '59'),
+          })
+          .eq('id', license.id);
+      }
+    }
+
+    // Handle recurring payments (just log, plan stays active)
+    if (payment.status === 'paid' && type === 'recurring') {
+      console.log(`Recurring payment received for school ${school_id}, plan: ${plan}`);
+    }
+
+    // Handle failed recurring payment
+    if (payment.status === 'failed' && type === 'recurring') {
+      console.warn(`Recurring payment FAILED for school ${school_id}`);
+      // Optionally downgrade after X failed attempts
+    }
+
+    return NextResponse.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json({ status: 'error' }, { status: 500 });
+  }
+}

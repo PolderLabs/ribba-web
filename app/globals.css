@@ -603,3 +603,15 @@ a.text-link:hover {
   color: #15803D;
   line-height: 1.6;
 }
+
+.checkout-error {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  color: #DC2626;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}

@@ -1,9 +1,7 @@
-import type { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Upgrade naar Premium – Ribba',
-  description: 'Upgrade je rijschool naar Ribba Premium voor uitgebreide functionaliteit.',
-};
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 const premiumFeatures = [
   { icon: '📊', title: 'Statistieken', desc: 'Uren, slagingspercentage, omzet & meer' },
@@ -25,7 +23,52 @@ const basicFeatures = [
   'Help Center & WhatsApp Support',
 ];
 
-export default function UpgradePage() {
+function CheckIcon({ color = '#16A34A' }: { color?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill={color} />
+    </svg>
+  );
+}
+
+function UpgradeContent() {
+  const searchParams = useSearchParams();
+  const schoolId = searchParams.get('school_id');
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCheckout = async (plan: 'basic' | 'premium') => {
+    if (!schoolId) {
+      setError('Geen rijschool gekoppeld. Open deze pagina vanuit de Ribba app.');
+      return;
+    }
+
+    setLoading(plan);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId, plan }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Er ging iets mis.');
+        setLoading(null);
+        return;
+      }
+
+      // Redirect to Mollie checkout
+      window.location.href = data.checkoutUrl;
+    } catch {
+      setError('Kan geen verbinding maken. Probeer het opnieuw.');
+      setLoading(null);
+    }
+  };
+
   return (
     <main className="upgrade-page">
       <div className="upgrade-container">
@@ -50,6 +93,13 @@ export default function UpgradePage() {
           </div>
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="checkout-error">
+            {error}
+          </div>
+        )}
+
         {/* Plan Cards */}
         <div className="plans-grid">
           {/* Basic Plan */}
@@ -68,17 +118,20 @@ export default function UpgradePage() {
             <div className="plan-features">
               {basicFeatures.map((feat) => (
                 <div key={feat} className="plan-feature-row">
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                    <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill="#16A34A"/>
-                  </svg>
+                  <CheckIcon />
                   <span>{feat}</span>
                 </div>
               ))}
             </div>
 
-            <a href="mailto:hallo@ribba.app?subject=Ribba Basic aanvragen" className="btn-secondary" style={{ marginTop: 'auto' }}>
-              Kies Basic
-            </a>
+            <button
+              className="btn-secondary"
+              style={{ marginTop: 'auto' }}
+              onClick={() => handleCheckout('basic')}
+              disabled={loading !== null}
+            >
+              {loading === 'basic' ? 'Bezig...' : 'Kies Basic'}
+            </button>
           </div>
 
           {/* Premium Plan */}
@@ -96,23 +149,17 @@ export default function UpgradePage() {
             </div>
 
             <div className="plan-features">
-              {/* Basic features included */}
               <div className="plan-feature-row plan-feature-included">
-                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill="#2563EB"/>
-                </svg>
+                <CheckIcon color="#2563EB" />
                 <span>Alles uit Basic</span>
               </div>
               <div className="plan-feature-row plan-feature-included">
-                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill="#2563EB"/>
-                </svg>
+                <CheckIcon color="#2563EB" />
                 <span>Onbeperkt leerlingen</span>
               </div>
 
               <div className="plan-features-divider" />
 
-              {/* Premium-only features */}
               {premiumFeatures.map((feat) => (
                 <div key={feat.title} className="plan-feature-row">
                   <span className="plan-feature-icon">{feat.icon}</span>
@@ -124,9 +171,14 @@ export default function UpgradePage() {
               ))}
             </div>
 
-            <a href="mailto:hallo@ribba.app?subject=Ribba Premium aanvragen" className="btn-primary" style={{ marginTop: 'auto' }}>
-              Start gratis proefperiode
-            </a>
+            <button
+              className="btn-primary"
+              style={{ marginTop: 'auto' }}
+              onClick={() => handleCheckout('premium')}
+              disabled={loading !== null}
+            >
+              {loading === 'premium' ? 'Bezig...' : 'Start gratis proefperiode'}
+            </button>
             <p className="plan-trial-note">30 dagen gratis, daarna &euro;59/maand</p>
           </div>
         </div>
@@ -147,5 +199,22 @@ export default function UpgradePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function UpgradePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="upgrade-page">
+          <div className="upgrade-container" style={{ textAlign: 'center', paddingTop: 120 }}>
+            <div className="logo">Ribba</div>
+            <p className="subtitle">Laden...</p>
+          </div>
+        </main>
+      }
+    >
+      <UpgradeContent />
+    </Suspense>
   );
 }
