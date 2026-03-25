@@ -419,3 +419,187 @@ a.text-link:hover {
 .payment-check {
   margin-bottom: 20px;
 }
+
+/* ─── Upgrade / Pricing Page ─── */
+.upgrade-page {
+  min-height: 100vh;
+  padding: 3rem 1.5rem;
+  background: linear-gradient(135deg, #EFF6FF 0%, #FAFAF9 50%, #F0FDF4 100%);
+}
+
+.upgrade-container {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.plans-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .plans-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plan-card {
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 32px;
+  border: 1px solid #E7E5E4;
+  box-shadow: 0 8px 30px rgba(37, 99, 235, 0.06);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.plan-card-premium {
+  border-color: #2563EB;
+  border-width: 2px;
+  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.14);
+}
+
+.plan-popular {
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2563EB;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 4px 16px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.plan-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.pill-premium {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  margin: 12px 0 8px;
+}
+
+.plan-amount {
+  font-size: 42px;
+  font-weight: 900;
+  color: #1C1917;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.plan-period {
+  font-size: 16px;
+  color: #78716C;
+  font-weight: 500;
+}
+
+.plan-desc {
+  font-size: 14px;
+  color: #78716C;
+  line-height: 1.5;
+}
+
+.plan-features {
+  flex: 1;
+  margin-bottom: 24px;
+}
+
+.plan-feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 14px;
+  color: #1C1917;
+  line-height: 1.4;
+}
+
+.plan-feature-row svg,
+.plan-feature-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.plan-feature-icon {
+  font-size: 16px;
+  width: 18px;
+  text-align: center;
+}
+
+.plan-feature-included {
+  font-weight: 600;
+  color: #2563EB;
+}
+
+.plan-feature-title {
+  display: block;
+  font-weight: 600;
+  color: #1C1917;
+  font-size: 14px;
+}
+
+.plan-feature-desc {
+  display: block;
+  font-size: 13px;
+  color: #78716C;
+  margin-top: 1px;
+}
+
+.plan-features-divider {
+  height: 1px;
+  background: #F5F5F4;
+  margin: 12px 0;
+}
+
+.plan-trial-note {
+  text-align: center;
+  font-size: 13px;
+  color: #78716C;
+  margin-top: 8px;
+}
+
+/* Trial banner */
+.trial-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 32px;
+}
+
+.trial-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.trial-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #166534;
+  margin-bottom: 4px;
+}
+
+.trial-desc {
+  font-size: 14px;
+  color: #15803D;
+  line-height: 1.6;
+}
