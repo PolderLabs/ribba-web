@@ -30,3 +30,18 @@ export function isValidPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, '');
   return /^(06\d{8}|\+316\d{8}|00316\d{8})$/.test(cleaned);
 }
+
+/**
+ * KVK number validation: exactly 8 digits
+ */
+export function isValidKVK(kvk: string): boolean {
+  return /^\d{8}$/.test(kvk.replace(/\s/g, ''));
+}
+
+/**
+ * IBAN validation: 2 letters + 2 digits + 11-30 alphanumeric chars
+ */
+export function isValidIBAN(iban: string): boolean {
+  const cleaned = iban.replace(/\s/g, '').toUpperCase();
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(cleaned);
+}
