@@ -1,8 +1,16 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useCallback, useRef, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
 import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
+
+type KvkResult = {
+  name: string;
+  kvk_number: string;
+  address: string;
+  postal_code: string;
+  city: string;
+} | null;
 
 type FormData = {
   school_name: string;
@@ -42,6 +50,68 @@ export default function SchoolRegistrationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [kvkLooking, setKvkLooking] = useState(false);
+  const [kvkResult, setKvkResult] = useState<KvkResult>(null);
+  const [kvkNotFound, setKvkNotFound] = useState(false);
+  const kvkTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lookupKvk = useCallback(async (kvk: string) => {
+    const cleaned = kvk.replace(/\s/g, '');
+    if (cleaned.length !== 8 || !/^\d{8}$/.test(cleaned)) {
+      setKvkResult(null);
+      setKvkNotFound(false);
+      return;
+    }
+
+    setKvkLooking(true);
+    setKvkNotFound(false);
+    try {
+      const res = await fetch(`/api/kvk-lookup?kvk=${cleaned}`);
+      const data = await res.json();
+      if (data.found && data.company) {
+        setKvkResult(data.company);
+      } else {
+        setKvkResult(null);
+        setKvkNotFound(true);
+      }
+    } catch {
+      setKvkResult(null);
+    } finally {
+      setKvkLooking(false);
+    }
+  }, []);
+
+  const handleKvkChange = useCallback((value: string) => {
+    handleChange('kvk_number', value);
+    setKvkResult(null);
+    setKvkNotFound(false);
+
+    if (kvkTimeout.current) clearTimeout(kvkTimeout.current);
+    const cleaned = value.replace(/\s/g, '');
+    if (cleaned.length === 8 && /^\d{8}$/.test(cleaned)) {
+      kvkTimeout.current = setTimeout(() => lookupKvk(value), 300);
+    }
+  }, [lookupKvk]);
+
+  const applyKvkResult = useCallback(() => {
+    if (!kvkResult) return;
+    setForm((prev) => ({
+      ...prev,
+      school_name: kvkResult.name || prev.school_name,
+      address: kvkResult.address || prev.address,
+      postal_code: kvkResult.postal_code || prev.postal_code,
+      city: kvkResult.city || prev.city,
+    }));
+    // Clear any related errors
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.school_name;
+      delete next.address;
+      delete next.postal_code;
+      delete next.city;
+      return next;
+    });
+  }, [kvkResult]);
 
   function validate(): FormErrors {
     const e: FormErrors = {};
@@ -170,6 +240,66 @@ export default function SchoolRegistrationForm() {
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="form-grid">
+        {/* KVK */}
+        <div className="form-group full-width">
+          <label htmlFor="kvk_number">KVK-nummer</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              id="kvk_number"
+              type="text"
+              placeholder="12345678"
+              maxLength={8}
+              className={errors.kvk_number ? 'error' : ''}
+              value={form.kvk_number}
+              onChange={(e) => handleKvkChange(e.target.value)}
+            />
+            {kvkLooking && (
+              <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
+                <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderColor: 'rgba(37,99,235,0.2)', borderTopColor: '#2563EB' }} />
+              </div>
+            )}
+          </div>
+          {errors.kvk_number && <p className="form-error">{errors.kvk_number}</p>}
+          {kvkNotFound && !errors.kvk_number && (
+            <p style={{ fontSize: 12, color: '#D97706', marginTop: 4 }}>Bedrijf niet gevonden. Vul de gegevens handmatig in.</p>
+          )}
+          {kvkResult && (
+            <button
+              type="button"
+              onClick={applyKvkResult}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 8,
+                padding: '10px 14px',
+                background: '#EFF6FF',
+                border: '1.5px solid #BFDBFE',
+                borderRadius: 10,
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'left',
+                fontSize: 13,
+                color: '#1C1917',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#DBEAFE')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#EFF6FF')}
+            >
+              <span style={{ fontSize: 16 }}>🏢</span>
+              <span>
+                <strong>{kvkResult.name}</strong><br />
+                <span style={{ fontSize: 12, color: '#57534E' }}>
+                  {[kvkResult.address, kvkResult.postal_code, kvkResult.city].filter(Boolean).join(', ')}
+                </span>
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2563EB', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                Overnemen →
+              </span>
+            </button>
+          )}
+        </div>
+
         {/* Naam rijschool */}
         <div className="form-group full-width">
           <label htmlFor="school_name">Naam rijschool</label>
@@ -280,20 +410,6 @@ export default function SchoolRegistrationForm() {
             onChange={(e) => handleChange('city', e.target.value)}
           />
           {errors.city && <p className="form-error">{errors.city}</p>}
-        </div>
-
-        {/* KVK */}
-        <div className="form-group">
-          <label htmlFor="kvk_number">KVK-nummer</label>
-          <input
-            id="kvk_number"
-            type="text"
-            placeholder="12345678"
-            className={errors.kvk_number ? 'error' : ''}
-            value={form.kvk_number}
-            onChange={(e) => handleChange('kvk_number', e.target.value)}
-          />
-          {errors.kvk_number && <p className="form-error">{errors.kvk_number}</p>}
         </div>
 
         {/* BTW */}
