@@ -428,7 +428,7 @@ a.text-link:hover {
 }
 
 .upgrade-container {
-  max-width: 880px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -437,6 +437,16 @@ a.text-link:hover {
   grid-template-columns: 1fr 1fr;
   gap: 24px;
   align-items: start;
+}
+
+.plans-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .plans-grid-3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -456,10 +466,43 @@ a.text-link:hover {
   position: relative;
 }
 
+.plan-card-trial {
+  border-color: #BBF7D0;
+  background: #FAFFF9;
+}
+
 .plan-card-premium {
   border-color: #2563EB;
   border-width: 2px;
   box-shadow: 0 20px 60px rgba(37, 99, 235, 0.14);
+}
+
+.btn-trial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #16A34A;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 14px 28px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.15s;
+}
+
+.btn-trial:hover {
+  background: #15803D;
+}
+
+.btn-trial:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .plan-popular {

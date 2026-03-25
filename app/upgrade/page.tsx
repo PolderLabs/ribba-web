@@ -23,6 +23,13 @@ const basicFeatures = [
   'Help Center & WhatsApp Support',
 ];
 
+const trialFeatures = [
+  'Alle Premium-functies',
+  'Onbeperkt leerlingen',
+  'Geen creditcard nodig',
+  'Na 30 dagen kies je je plan',
+];
+
 function CheckIcon({ color = '#16A34A' }: { color?: string }) {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
@@ -61,7 +68,6 @@ function UpgradeContent() {
         return;
       }
 
-      // Redirect to Mollie checkout
       window.location.href = data.checkoutUrl;
     } catch {
       setError('Kan geen verbinding maken. Probeer het opnieuw.');
@@ -77,20 +83,8 @@ function UpgradeContent() {
           <div className="logo">Ribba</div>
           <h1 style={{ fontSize: 36, marginBottom: 8 }}>Kies je plan</h1>
           <p className="subtitle">
-            Probeer Ribba 30 dagen gratis. Geen betaalgegevens nodig.
+            Start gratis of kies direct het plan dat bij je rijschool past.
           </p>
-        </div>
-
-        {/* Trial Banner */}
-        <div className="trial-banner">
-          <div className="trial-icon">🎉</div>
-          <div>
-            <p className="trial-title">30 dagen gratis uitproberen</p>
-            <p className="trial-desc">
-              Start met een gratis proefperiode van 30 dagen met alle Premium-functies.
-              Geen creditcard nodig. Na 30 dagen kies je het plan dat bij je past.
-            </p>
-          </div>
         </div>
 
         {/* Error */}
@@ -101,7 +95,39 @@ function UpgradeContent() {
         )}
 
         {/* Plan Cards */}
-        <div className="plans-grid">
+        <div className="plans-grid plans-grid-3">
+          {/* Trial */}
+          <div className="plan-card plan-card-trial">
+            <div className="plan-header">
+              <span className="pill pill-green">Gratis</span>
+              <div className="plan-price">
+                <span className="plan-amount">&euro;0</span>
+                <span className="plan-period">/30 dagen</span>
+              </div>
+              <p className="plan-desc">
+                Probeer Ribba 30 dagen gratis met alle functies.
+              </p>
+            </div>
+
+            <div className="plan-features">
+              {trialFeatures.map((feat) => (
+                <div key={feat} className="plan-feature-row">
+                  <CheckIcon color="#16A34A" />
+                  <span>{feat}</span>
+                </div>
+              ))}
+            </div>
+
+            <button
+              className="btn-trial"
+              style={{ marginTop: 'auto' }}
+              onClick={() => handleCheckout('premium')}
+              disabled={loading !== null}
+            >
+              {loading === 'premium' ? 'Bezig...' : 'Start gratis'}
+            </button>
+          </div>
+
           {/* Basic Plan */}
           <div className="plan-card">
             <div className="plan-header">
@@ -177,9 +203,8 @@ function UpgradeContent() {
               onClick={() => handleCheckout('premium')}
               disabled={loading !== null}
             >
-              {loading === 'premium' ? 'Bezig...' : 'Start gratis proefperiode'}
+              {loading === 'premium' ? 'Bezig...' : 'Kies Premium'}
             </button>
-            <p className="plan-trial-note">30 dagen gratis, daarna &euro;59/maand</p>
           </div>
         </div>
 
