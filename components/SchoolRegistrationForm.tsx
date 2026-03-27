@@ -18,6 +18,7 @@ type FormData = {
   iban: string;
   password: string;
   password_confirm: string;
+  terms_accepted: boolean;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -37,6 +38,7 @@ export default function SchoolRegistrationForm() {
     iban: '',
     password: '',
     password_confirm: '',
+    terms_accepted: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +102,10 @@ export default function SchoolRegistrationForm() {
       e.password_confirm = 'Wachtwoorden komen niet overeen';
     }
 
+    if (!form.terms_accepted) {
+      e.terms_accepted = 'Je moet akkoord gaan met de voorwaarden';
+    }
+
     return e;
   }
 
@@ -114,11 +120,12 @@ export default function SchoolRegistrationForm() {
     setSubmitting(true);
 
     try {
+      const { terms_accepted: _, ...formData } = form;
       const res = await fetch('/api/register-school', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          ...formData,
           postal_code: normalizePostalCode(form.postal_code),
         }),
       });
@@ -351,6 +358,38 @@ export default function SchoolRegistrationForm() {
           />
           {errors.password_confirm && <p className="form-error">{errors.password_confirm}</p>}
         </div>
+      </div>
+
+      {/* Voorwaarden */}
+      <div className="form-group full-width" style={{ marginTop: 8 }}>
+        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+          <input
+            type="checkbox"
+            checked={form.terms_accepted}
+            onChange={(e) => {
+              setForm((prev) => ({ ...prev, terms_accepted: e.target.checked }));
+              if (errors.terms_accepted) {
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.terms_accepted;
+                  return next;
+                });
+              }
+            }}
+            style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+          />
+          <span>
+            Ik ga akkoord met de{' '}
+            <a href="/voorwaarden" target="_blank" style={{ color: '#2563EB', fontWeight: 600 }}>
+              Algemene Voorwaarden
+            </a>{' '}
+            en de{' '}
+            <a href="/privacy" target="_blank" style={{ color: '#2563EB', fontWeight: 600 }}>
+              Privacyverklaring
+            </a>
+          </span>
+        </label>
+        {errors.terms_accepted && <p className="form-error">{errors.terms_accepted}</p>}
       </div>
 
       {serverError && (
