@@ -11,7 +11,7 @@ function getSupabase() {
 }
 
 const PLAN_AMOUNTS: Record<string, string> = {
-  basic: '29.00',
+  basic: '25.00',
   premium: '59.00',
 };
 
@@ -48,19 +48,26 @@ export async function POST(request: NextRequest) {
       const customerId = license?.mollie_customer_id || payment.customerId;
 
       if (customerId) {
-        // Create recurring subscription
+        // Create recurring subscription (next charge in 1 month — first payment already done)
         try {
           const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+
+          // Start recurring billing 1 month from now (first payment already covers this month)
+          const startDate = new Date();
+          startDate.setMonth(startDate.getMonth() + 1);
+          const startDateStr = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
           const subscription = await getMollie().customerSubscriptions.create({
             customerId,
             amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] || '59.00' },
             interval: '1 month',
+            startDate: startDateStr,
             description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
             webhookUrl: `${baseUrl}/api/mollie-webhook`,
             metadata: JSON.stringify({ school_id, plan, type: 'recurring' }),
           });
 
-          // Update license with subscription info
+          // Update license: plan active immediately, subscription for future billing
           await getSupabase()
             .from('instructor_licenses')
             .update({
@@ -72,7 +79,7 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', license?.id);
 
-          console.log(`Subscription ${subscription.id} created for school ${school_id}`);
+          console.log(`Subscription ${subscription.id} created for school ${school_id}, starts ${startDateStr}`);
         } catch (subError) {
           console.error('Failed to create subscription:', subError);
         }
