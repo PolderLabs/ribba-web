@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const basicFeatures = [
-  'Max 15 actieve leerlingen',
+  'Tot 30 actieve leerlingen',
   '1 instructeur',
   'Alle koppelingen (CBR, Moneybird, Mollie)',
   'Facturatie & pakketten',
@@ -13,8 +13,8 @@ const basicFeatures = [
 ];
 
 const premiumFeatures = [
-  'Max 50 actieve leerlingen',
-  'Tot 3 instructeurs',
+  'Onbeperkte leerlingen',
+  'Tot 5 instructeurs',
   'Alle koppelingen (CBR, Moneybird, Mollie)',
   'Facturatie & pakketten',
   'Leerling-app',
@@ -130,7 +130,7 @@ function UpgradeContent() {
             <div className="plan-header">
               <span className="pill">Basic</span>
               <div className="plan-price">
-                <span className="plan-amount">&euro;29</span>
+                <span className="plan-amount">&euro;25</span>
                 <span className="plan-period">/maand</span>
               </div>
               <p className="plan-desc">
@@ -173,7 +173,7 @@ function UpgradeContent() {
             <div className="plan-header">
               <span className="pill pill-premium">Premium</span>
               <div className="plan-price">
-                <span className="plan-amount">&euro;49</span>
+                <span className="plan-amount">&euro;59</span>
                 <span className="plan-period">/maand</span>
               </div>
               <p className="plan-desc">
