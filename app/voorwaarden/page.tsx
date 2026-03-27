@@ -173,7 +173,7 @@ export default function VoorwaardenPage() {
           </tr>
           <tr>
             <td style={styles.td}>Premium</td>
-            <td style={styles.td}>&euro; 59,00 / maand</td>
+            <td style={styles.td}>&euro; 45,00 / maand</td>
             <td style={styles.td}>
               Uitgebreide functies inclusief facturatie-integraties,
               boekhouding-koppeling en meer.

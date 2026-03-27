@@ -12,7 +12,7 @@ function getSupabase() {
 
 const PLANS = {
   basic: { amount: '25.00', description: 'Ribba Basic – Maandabonnement' },
-  premium: { amount: '59.00', description: 'Ribba Premium – Maandabonnement' },
+  premium: { amount: '45.00', description: 'Ribba Premium – Maandabonnement' },
 } as const;
 
 export async function POST(request: NextRequest) {

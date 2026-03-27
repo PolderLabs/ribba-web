@@ -12,7 +12,7 @@ function getSupabase() {
 
 const PLAN_AMOUNTS: Record<string, string> = {
   basic: '25.00',
-  premium: '59.00',
+  premium: '45.00',
 };
 
 export async function POST(request: NextRequest) {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
           const subscription = await getMollie().customerSubscriptions.create({
             customerId,
-            amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] || '59.00' },
+            amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] || '45.00' },
             interval: '1 month',
             startDate: startDateStr,
             description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
               external_subscription_id: subscription.id,
               mollie_customer_id: customerId,
               is_trial: false,
-              price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '59'),
+              price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '45'),
             })
             .eq('id', license?.id);
 
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
           .update({
             billing_plan: plan,
             is_trial: false,
-            price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '59'),
+            price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '45'),
           })
           .eq('id', license.id);
       }

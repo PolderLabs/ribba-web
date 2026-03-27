@@ -173,7 +173,7 @@ function UpgradeContent() {
             <div className="plan-header">
               <span className="pill pill-premium">Premium</span>
               <div className="plan-price">
-                <span className="plan-amount">&euro;59</span>
+                <span className="plan-amount">&euro;45</span>
                 <span className="plan-period">/maand</span>
               </div>
               <p className="plan-desc">
