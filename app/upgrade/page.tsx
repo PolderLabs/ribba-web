@@ -3,31 +3,22 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-const premiumFeatures = [
-  { icon: '📊', title: 'Statistieken', desc: 'Uren, slagingspercentage, omzet & meer' },
-  { icon: '🤖', title: 'Ribba AI Assistent', desc: 'Stel vragen en krijg direct antwoord' },
-  { icon: '🛒', title: 'Webshop voor leerlingen', desc: 'Leerlingen bestellen pakketten & producten via de app' },
-  { icon: '🧾', title: 'Termijnfacturering', desc: 'Automatisch facturen genereren bij pakkettoewijzing' },
-  { icon: '💳', title: 'Mollie (iDEAL)', desc: 'Leerlingen betalen direct via iDEAL' },
-  { icon: '📒', title: 'Moneybird boekhouding', desc: 'Facturen & contacten automatisch synchroniseren' },
-  { icon: '🪪', title: 'CBR TOP koppeling', desc: 'Examens automatisch ophalen, slagingspercentage & resultaten bijhouden' },
-  { icon: '👥', title: 'Meerdere instructeurs', desc: 'Voeg extra instructeurs toe aan je rijschool' },
-];
-
 const basicFeatures = [
-  'Onbeperkt lessen plannen',
-  'Leerlingbeheer (max 25)',
-  'Voertuigbeheer',
-  'Handmatige facturering',
-  'Opleidingen & lestypes',
+  'Max 15 actieve leerlingen',
+  '1 instructeur',
+  'Alle koppelingen (CBR, Moneybird, Mollie)',
+  'Facturatie & pakketten',
+  'Leerling-app',
   'Help Center & WhatsApp Support',
 ];
 
-const trialFeatures = [
-  'Alle Premium-functies',
-  'Onbeperkt leerlingen',
-  'Geen creditcard nodig',
-  'Na 30 dagen kies je je plan',
+const premiumFeatures = [
+  'Max 50 actieve leerlingen',
+  'Tot 3 instructeurs',
+  'Alle koppelingen (CBR, Moneybird, Mollie)',
+  'Facturatie & pakketten',
+  'Leerling-app',
+  'Prioriteit support',
 ];
 
 function CheckIcon({ color = '#16A34A' }: { color?: string }) {
@@ -110,7 +101,7 @@ function UpgradeContent() {
   const headerTitle = currentPlan && !isTrial ? 'Jouw abonnement' : 'Kies je plan';
   const headerSubtitle = currentPlan && !isTrial
     ? `Je hebt momenteel het ${currentPlan === 'premium' ? 'Premium' : 'Basic'} abonnement.`
-    : 'Start gratis of kies direct het plan dat bij je rijschool past.';
+    : 'Kies het plan dat bij je rijschool past.';
 
   return (
     <main className="upgrade-page">
@@ -132,46 +123,7 @@ function UpgradeContent() {
         )}
 
         {/* Plan Cards */}
-        <div className="plans-grid plans-grid-3">
-          {/* Trial */}
-          <div className={`plan-card plan-card-trial${isTrial ? ' plan-card-current' : ''}`}>
-            {isTrial && <div className="plan-current-badge">Huidig</div>}
-            <div className="plan-header">
-              <span className="pill pill-green">Gratis</span>
-              <div className="plan-price">
-                <span className="plan-amount">&euro;0</span>
-                <span className="plan-period">/30 dagen</span>
-              </div>
-              <p className="plan-desc">
-                Probeer Ribba 30 dagen gratis met alle functies.
-              </p>
-            </div>
-
-            <div className="plan-features">
-              {trialFeatures.map((feat) => (
-                <div key={feat} className="plan-feature-row">
-                  <CheckIcon color="#16A34A" />
-                  <span>{feat}</span>
-                </div>
-              ))}
-            </div>
-
-            {isTrial ? (
-              <div className="btn-current">Huidig abonnement</div>
-            ) : !currentPlan ? (
-              <button
-                className="btn-trial"
-                style={{ marginTop: 'auto' }}
-                onClick={() => handleCheckout('premium')}
-                disabled={loading !== null}
-              >
-                {loading === 'premium' ? 'Bezig...' : 'Start gratis'}
-              </button>
-            ) : (
-              <div style={{ marginTop: 'auto' }} />
-            )}
-          </div>
-
+        <div className="plans-grid">
           {/* Basic Plan */}
           <div className={`plan-card${isCurrentPlan('basic') ? ' plan-card-current' : ''}`}>
             {isCurrentPlan('basic') && <div className="plan-current-badge">Huidig</div>}
@@ -221,33 +173,19 @@ function UpgradeContent() {
             <div className="plan-header">
               <span className="pill pill-premium">Premium</span>
               <div className="plan-price">
-                <span className="plan-amount">&euro;59</span>
+                <span className="plan-amount">&euro;49</span>
                 <span className="plan-period">/maand</span>
               </div>
               <p className="plan-desc">
-                Alles uit Basic, plus krachtige tools om te groeien.
+                Groei je rijschool met meer leerlingen en instructeurs.
               </p>
             </div>
 
             <div className="plan-features">
-              <div className="plan-feature-row plan-feature-included">
-                <CheckIcon color="#2563EB" />
-                <span>Alles uit Basic</span>
-              </div>
-              <div className="plan-feature-row plan-feature-included">
-                <CheckIcon color="#2563EB" />
-                <span>Onbeperkt leerlingen</span>
-              </div>
-
-              <div className="plan-features-divider" />
-
               {premiumFeatures.map((feat) => (
-                <div key={feat.title} className="plan-feature-row">
-                  <span className="plan-feature-icon">{feat.icon}</span>
-                  <div>
-                    <span className="plan-feature-title">{feat.title}</span>
-                    <span className="plan-feature-desc">{feat.desc}</span>
-                  </div>
+                <div key={feat} className="plan-feature-row">
+                  <CheckIcon color="#2563EB" />
+                  <span>{feat}</span>
                 </div>
               ))}
             </div>

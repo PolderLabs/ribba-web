@@ -173,18 +173,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Insert instructor license (30-day premium trial)
-    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    // 5. Insert instructor license (60-day trial)
+    const trialEndsAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
     const { error: licenseError } = await supabase
       .from('instructor_licenses')
       .insert({
         instructor_id: instructor.id,
         school_id: school.id,
         status: 'active',
-        billing_plan: 'premium',
+        billing_plan: 'trial',
         is_trial: true,
         trial_ends_at: trialEndsAt,
-        max_active_students: 9999,
+        max_active_students: 5,
         price_per_month: 0,
       });
 
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         <p style="color: #64748b; line-height: 1.6; font-size: 15px;">
           Hoi ${first_name.trim()},<br><br>
           Gefeliciteerd! Je account voor <strong>${school_name.trim()}</strong> is aangemaakt.
-          Je hebt <strong>30 dagen gratis</strong> toegang tot alle Premium-functies.
+          Je hebt <strong>2 maanden gratis</strong> toegang tot alle functies.
         </p>
         <div style="margin-top: 24px; padding: 16px; background: #eff6ff; border-radius: 12px;">
           <p style="font-size: 13px; color: #64748b; margin: 0;">
