@@ -121,7 +121,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <p style={styles.p}>
         1.2. <strong>Verwerker</strong> (&quot;Ribba&quot;): Ribba, onderdeel
-        van PolderLabs, die in opdracht van de Verwerkingsverantwoordelijke
+        van Ribba (KVK: 85826898), die in opdracht van de Verwerkingsverantwoordelijke
         persoonsgegevens verwerkt ten behoeve van de Dienst.
       </p>
 
@@ -440,7 +440,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <p style={styles.p}>
         13.2. Geschillen worden voorgelegd aan de bevoegde rechter in het
-        arrondissement van de vestigingsplaats van PolderLabs.
+        arrondissement van de vestigingsplaats van Ribba (KVK: 85826898).
       </p>
 
       {/* Artikel 14 */}
@@ -450,7 +450,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>E-mail:</strong> support@ribba.app
+          <strong>E-mail:</strong> info@ribba.app
         </li>
         <li style={styles.li}>
           <strong>Website:</strong> ribba.app

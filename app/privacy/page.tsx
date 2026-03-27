@@ -100,7 +100,7 @@ export default function PrivacyPage() {
       <p style={styles.updated}>Laatst bijgewerkt: maart 2026</p>
 
       <p style={styles.p}>
-        Ribba, onderdeel van PolderLabs, hecht groot belang aan de bescherming
+        Ribba hecht groot belang aan de bescherming
         van uw persoonsgegevens. In deze privacyverklaring leggen wij uit welke
         gegevens wij verzamelen, waarom wij dat doen en hoe wij daarmee omgaan,
         conform de Algemene Verordening Gegevensbescherming (AVG/GDPR).
@@ -109,15 +109,27 @@ export default function PrivacyPage() {
       {/* 1 */}
       <h2 style={styles.h2}>1. Wie zijn wij</h2>
       <p style={styles.p}>
-        Ribba is een product van PolderLabs. Ribba biedt SaaS-rijschoolsoftware
-        aan voor planning, leerlingbeheer en facturatie.
+        Ribba biedt SaaS-rijschoolsoftware aan voor planning,
+        leerlingbeheer en facturatie.
       </p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>Website:</strong> ribba.app
+          <strong>Bedrijfsnaam:</strong> Ribba
         </li>
         <li style={styles.li}>
-          <strong>E-mail:</strong> support@ribba.app
+          <strong>KVK-nummer:</strong> 85826898
+        </li>
+        <li style={styles.li}>
+          <strong>Contactpersoon:</strong> Önder Ates
+        </li>
+        <li style={styles.li}>
+          <strong>Telefoon:</strong> 06-41774557
+        </li>
+        <li style={styles.li}>
+          <strong>E-mail:</strong> info@ribba.app
+        </li>
+        <li style={styles.li}>
+          <strong>Website:</strong> ribba.app
         </li>
       </ul>
 

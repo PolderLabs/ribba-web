@@ -104,7 +104,7 @@ export default function VoorwaardenPage() {
       <p style={styles.p}>In deze Algemene Voorwaarden wordt verstaan onder:</p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>Ribba:</strong> de SaaS-dienst aangeboden door PolderLabs,
+          <strong>Ribba:</strong> de SaaS-dienst aangeboden door Ribba (KVK: 85826898),
           bereikbaar via ribba.app.
         </li>
         <li style={styles.li}>
@@ -237,7 +237,7 @@ export default function VoorwaardenPage() {
       </p>
       <p style={styles.p}>
         6.2. Opzegging kan op elk moment plaatsvinden via de instellingen in de
-        app of door een e-mail te sturen naar support@ribba.app.
+        app of door een e-mail te sturen naar info@ribba.app.
       </p>
       <p style={styles.p}>
         6.3. Bij opzegging blijft het Abonnement actief tot het einde van de
@@ -297,7 +297,7 @@ export default function VoorwaardenPage() {
       <p style={styles.p}>
         9.1. Alle intellectuele eigendomsrechten op de Dienst, waaronder
         software, teksten, ontwerpen en logo&apos;s, berusten bij Ribba /
-        PolderLabs.
+        Ribba (KVK: 85826898).
       </p>
       <p style={styles.p}>
         9.2. De Gebruiker verkrijgt een niet-exclusief, niet-overdraagbaar
@@ -363,7 +363,7 @@ export default function VoorwaardenPage() {
       <p style={styles.p}>
         12.2. Geschillen worden bij voorkeur in onderling overleg opgelost.
         Indien dit niet lukt, is de bevoegde rechter in het arrondissement van
-        de vestigingsplaats van PolderLabs bevoegd.
+        de vestigingsplaats van Ribba (KVK: 85826898) bevoegd.
       </p>
 
       {/* Artikel 13 */}
@@ -373,7 +373,7 @@ export default function VoorwaardenPage() {
       </p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>E-mail:</strong> support@ribba.app
+          <strong>E-mail:</strong> info@ribba.app
         </li>
         <li style={styles.li}>
           <strong>Website:</strong> ribba.app
