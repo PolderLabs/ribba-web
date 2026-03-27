@@ -11,7 +11,7 @@ function getSupabase() {
 }
 
 export default function ResetPage() {
-  const [mode, setMode] = useState<'loading' | 'request' | 'set-password'>('loading');
+  const [mode, setMode] = useState<'loading' | 'request' | 'set-password' | 'success'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -22,7 +22,9 @@ export default function ResetPage() {
     // Check if there's an access_token in the URL hash (from Supabase reset email)
     const hash = window.location.hash;
     if (hash && hash.includes('access_token')) {
-      // Supabase will automatically pick up the token from the URL
+      // Clean the URL immediately — remove the tokens from the address bar
+      window.history.replaceState({}, '', '/reset');
+
       const supabase = getSupabase();
       supabase.auth.getSession().then(({ data }) => {
         if (data.session) {
@@ -46,6 +48,11 @@ export default function ResetPage() {
           }
         }
       });
+    } else if (hash && hash.includes('error=')) {
+      // Clean URL and show error
+      window.history.replaceState({}, '', '/reset');
+      setMode('request');
+      setMessage({ type: 'error', text: 'De reset link is verlopen of ongeldig. Vraag een nieuwe aan.' });
     } else {
       setMode('request');
     }
@@ -104,12 +111,13 @@ export default function ResetPage() {
       if (error) {
         setMessage({ type: 'error', text: error.message || 'Er ging iets mis.' });
       } else {
-        setMessage({
-          type: 'success',
-          text: 'Je wachtwoord is gewijzigd! Je kunt nu inloggen in de Ribba app.',
-        });
         setPassword('');
         setConfirmPassword('');
+        setMode('success');
+        // Try to open the app after a short delay
+        setTimeout(() => {
+          window.location.href = 'ribba://';
+        }, 1500);
       }
     } catch {
       setMessage({ type: 'error', text: 'Er ging iets mis. Probeer het opnieuw.' });
@@ -128,6 +136,36 @@ export default function ResetPage() {
           </div>
           <p className="subtitle">Laden...</p>
         </div>
+      </main>
+    );
+  }
+
+  if (mode === 'success') {
+    return (
+      <main className="registration-page">
+        <section className="registration-card">
+          <div className="registration-brand">
+            <div className="logo-icon">R</div>
+            <span>Ribba</span>
+          </div>
+
+          <p className="registration-pill">Gelukt!</p>
+
+          <h1>Wachtwoord gewijzigd</h1>
+          <p className="registration-description">
+            Je wachtwoord is succesvol ingesteld. Je kunt nu inloggen in de Ribba app.
+          </p>
+
+          <a href="ribba://" className="btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '1rem' }}>
+            Open Ribba app
+          </a>
+
+          <div className="divider" />
+          <p className="footer-text">
+            Vragen? Neem contact op met{' '}
+            <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>
+          </p>
+        </section>
       </main>
     );
   }
