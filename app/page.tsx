@@ -1,4 +1,19 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Redirect to /reset if Supabase auth params are in the hash (password reset flow)
+    const hash = window.location.hash;
+    if (hash && (hash.includes('access_token') || hash.includes('error='))) {
+      router.replace('/reset' + hash);
+    }
+  }, [router]);
+
   return (
     <main className="page-wrapper">
       <div className="card">
