@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import RibbaLogo from '../../components/RibbaLogo';
 
 function SuccessContent() {
   const searchParams = useSearchParams();
@@ -19,7 +20,7 @@ function SuccessContent() {
   return (
     <main className="page-wrapper">
       <div className="card">
-        <div className="logo">Ribba</div>
+        <div className="logo"><RibbaLogo height={36} /></div>
 
         <div className="payment-check">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -67,7 +68,7 @@ export default function UpgradeSuccessPage() {
       fallback={
         <main className="page-wrapper">
           <div className="card">
-            <div className="logo">Ribba</div>
+            <div className="logo"><RibbaLogo height={36} /></div>
             <p className="subtitle">Laden...</p>
           </div>
         </main>

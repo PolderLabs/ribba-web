@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import RibbaLogo from '../../components/RibbaLogo';
 
 function PaymentContent() {
   const searchParams = useSearchParams();
@@ -21,8 +22,7 @@ function PaymentContent() {
     <main className="page-wrapper">
       <div className="card">
         <div className="logo">
-          <div className="logo-icon">R</div>
-          Ribba
+          <RibbaLogo height={36} />
         </div>
 
         <div className="payment-check">
@@ -72,8 +72,7 @@ export default function PaymentSuccessPage() {
         <main className="page-wrapper">
           <div className="card">
             <div className="logo">
-              <div className="logo-icon">R</div>
-              Ribba
+              <RibbaLogo height={36} />
             </div>
             <p className="subtitle">Laden...</p>
           </div>

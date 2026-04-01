@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import RibbaLogo from '../components/RibbaLogo';
 
 const basicFeatures = [
   'Tot 30 actieve leerlingen',
@@ -108,7 +109,7 @@ function UpgradeContent() {
       <div className="upgrade-container">
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <div className="logo">Ribba</div>
+          <div className="logo"><RibbaLogo height={36} /></div>
           <h1 style={{ fontSize: 36, marginBottom: 8 }}>{headerTitle}</h1>
           <p className="subtitle">
             {planLoading ? 'Laden...' : headerSubtitle}
@@ -232,7 +233,7 @@ export default function UpgradePage() {
       fallback={
         <main className="upgrade-page">
           <div className="upgrade-container" style={{ textAlign: 'center', paddingTop: 120 }}>
-            <div className="logo">Ribba</div>
+            <div className="logo"><RibbaLogo height={36} /></div>
             <p className="subtitle">Laden...</p>
           </div>
         </main>

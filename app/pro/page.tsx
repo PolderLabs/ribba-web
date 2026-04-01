@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
+import RibbaLogo from '../components/RibbaLogo';
 
 export const metadata: Metadata = {
   title: 'Ribba – Rijschool Planner',
@@ -55,16 +56,8 @@ export default function ProPage() {
           display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', height: 60,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 34, height: 34, background: '#2563EB',
-              borderRadius: 10, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: '#fff',
-              fontSize: 17, fontWeight: 900,
-            }}>R</div>
-            <span style={{ fontSize: 17, fontWeight: 900, color: '#2563EB', letterSpacing: '-0.3px' }}>
-              Ribba
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <RibbaLogo height={32} />
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Link href="/upgrade" style={{
@@ -476,15 +469,8 @@ export default function ProPage() {
         borderTop: '1px solid #F5F5F4', padding: '2rem 1.5rem',
         textAlign: 'center', background: '#fff',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 12 }}>
-          <div style={{
-            width: 28, height: 28, background: '#2563EB', borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontSize: 14, fontWeight: 900,
-          }}>R</div>
-          <span style={{ fontSize: 16, fontWeight: 900, color: '#2563EB', letterSpacing: '-0.3px' }}>
-            Ribba – Rijschool Planner
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <RibbaLogo height={28} />
         </div>
         <p className="footer-text">
           Vragen?{' '}

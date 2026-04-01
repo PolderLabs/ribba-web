@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import RegistrationForm from '@/components/RegistrationForm';
+import RibbaLogo from '../components/RibbaLogo';
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -59,8 +60,7 @@ export default async function SchoolPage({ params }: Props) {
       <main className="registration-page">
         <section className="registration-card" style={{ textAlign: 'center' }}>
           <div className="registration-brand" style={{ justifyContent: 'center' }}>
-            <div className="logo-icon">R</div>
-            <span>Ribba</span>
+            <RibbaLogo height={36} />
           </div>
           <p className="pill pill-red">Niet gevonden</p>
           <h1>Link niet gevonden</h1>
@@ -81,8 +81,7 @@ export default async function SchoolPage({ params }: Props) {
     <main className="registration-page">
       <section className="registration-card">
         <div className="registration-brand">
-          <div className="logo-icon">R</div>
-          <span>Ribba</span>
+          <RibbaLogo height={36} />
         </div>
 
         <p className="registration-pill">Inschrijving</p>

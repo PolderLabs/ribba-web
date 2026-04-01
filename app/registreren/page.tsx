@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import SchoolRegistrationForm from '@/components/SchoolRegistrationForm';
+import RibbaLogo from '../components/RibbaLogo';
 
 export const metadata: Metadata = {
   title: 'Start met Ribba – Maak een account aan',
@@ -11,8 +12,7 @@ export default function RegistrerenPage() {
     <main className="registration-page">
       <section className="registration-card">
         <div className="registration-brand">
-          <div className="logo-icon">R</div>
-          <span>Ribba</span>
+          <RibbaLogo height={36} />
         </div>
 
         <h1>Start met Ribba</h1>

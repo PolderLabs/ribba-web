@@ -2,6 +2,7 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import RibbaLogo from '../components/RibbaLogo';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -131,8 +132,7 @@ export default function ResetPage() {
       <main className="page-wrapper">
         <div className="card">
           <div className="logo">
-            <div className="logo-icon">R</div>
-            Ribba
+            <RibbaLogo height={36} />
           </div>
           <p className="subtitle">Laden...</p>
         </div>
@@ -145,8 +145,7 @@ export default function ResetPage() {
       <main className="registration-page">
         <section className="registration-card">
           <div className="registration-brand">
-            <div className="logo-icon">R</div>
-            <span>Ribba</span>
+            <RibbaLogo height={36} />
           </div>
 
           <p className="registration-pill">Gelukt!</p>
@@ -174,8 +173,7 @@ export default function ResetPage() {
     <main className="registration-page">
       <section className="registration-card">
         <div className="registration-brand">
-          <div className="logo-icon">R</div>
-          <span>Ribba</span>
+          <RibbaLogo height={36} />
         </div>
 
         <p className="registration-pill">

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import RibbaLogo from './components/RibbaLogo';
 
 export default function Home() {
   const router = useRouter();
@@ -18,8 +19,7 @@ export default function Home() {
     <main className="page-wrapper">
       <div className="card">
         <div className="logo">
-          <div className="logo-icon">R</div>
-          Ribba
+          <RibbaLogo height={36} />
         </div>
         <p className="pill">Rijschool software</p>
         <h1>Coming soon</h1>

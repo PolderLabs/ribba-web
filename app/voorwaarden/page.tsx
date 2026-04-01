@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import RibbaLogo from "../components/RibbaLogo";
 
 export const metadata: Metadata = {
   title: "Algemene Voorwaarden | Ribba",
@@ -92,8 +93,8 @@ const styles = {
 export default function VoorwaardenPage() {
   return (
     <div style={styles.container}>
-      <Link href="/" style={styles.logo}>
-        Ribba
+      <Link href="/" style={{ display: 'inline-flex', marginBottom: 48 }}>
+        <RibbaLogo height={36} />
       </Link>
 
       <h1 style={styles.h1}>Algemene Voorwaarden</h1>

@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import RibbaLogo from '../../components/RibbaLogo';
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -89,8 +90,7 @@ export default async function JoinPage({ params }: Props) {
     <main className="page-wrapper">
       <div className="card">
         <div className="logo">
-          <div className="logo-icon">R</div>
-          Ribba
+          <RibbaLogo height={36} />
         </div>
 
         <p className="pill pill-green">Uitnodiging</p>
@@ -140,8 +140,7 @@ function ExpiredPage() {
     <main className="page-wrapper">
       <div className="card">
         <div className="logo">
-          <div className="logo-icon">R</div>
-          Ribba
+          <RibbaLogo height={36} />
         </div>
 
         <p className="pill pill-amber">Verlopen</p>

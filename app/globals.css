@@ -39,25 +39,7 @@ body {
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 900;
-  color: #2563EB;
-  letter-spacing: -0.5px;
   margin-bottom: 32px;
-}
-
-.logo-icon {
-  width: 36px;
-  height: 36px;
-  background: #2563EB;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 900;
 }
 
 /* ─── Pills / badges ────────────────────────────── */
@@ -238,17 +220,6 @@ h1 {
   margin-bottom: 32px;
 }
 
-.registration-brand .logo-icon {
-  width: 36px;
-  height: 36px;
-}
-
-.registration-brand span {
-  font-size: 20px;
-  font-weight: 900;
-  color: #2563EB;
-  letter-spacing: -0.5px;
-}
 
 .registration-pill {
   display: inline-block;
