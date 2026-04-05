@@ -1,8 +1,16 @@
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+function getSupabaseBrowser() {
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+}
 
 const basicFeatures = [
   'Tot 30 actieve leerlingen',
@@ -32,32 +40,57 @@ function CheckIcon({ color = '#16A34A' }: { color?: string }) {
 
 function UpgradeContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const schoolId = searchParams.get('school_id');
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [isTrial, setIsTrial] = useState(false);
   const [planLoading, setPlanLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  // Fetch current plan
+  // Fetch current plan (requires auth)
   useEffect(() => {
     if (!schoolId) {
       setPlanLoading(false);
       return;
     }
-    fetch(`/api/current-plan?school_id=${schoolId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCurrentPlan(data.plan);
-        setIsTrial(data.isTrial || false);
+
+    const supabase = getSupabaseBrowser();
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace('/login');
+        return;
+      }
+      setAccessToken(data.session.access_token);
+
+      fetch(`/api/current-plan?school_id=${schoolId}`, {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
       })
-      .catch(() => {})
-      .finally(() => setPlanLoading(false));
-  }, [schoolId]);
+        .then((res) => {
+          if (res.status === 401 || res.status === 403) {
+            router.replace('/login');
+            return null;
+          }
+          return res.json();
+        })
+        .then((body) => {
+          if (!body) return;
+          setCurrentPlan(body.plan);
+          setIsTrial(body.isTrial || false);
+        })
+        .catch(() => {})
+        .finally(() => setPlanLoading(false));
+    });
+  }, [schoolId, router]);
 
   const handleCheckout = async (plan: 'basic' | 'premium') => {
     if (!schoolId) {
       setError('Geen rijschool gekoppeld. Open deze pagina vanuit de Ribba app.');
+      return;
+    }
+    if (!accessToken) {
+      router.replace('/login');
       return;
     }
 
@@ -67,7 +100,10 @@ function UpgradeContent() {
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ school_id: schoolId, plan }),
       });
 
