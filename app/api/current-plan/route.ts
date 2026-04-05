@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await supabase
       .from('instructor_licenses')
-      .select('billing_plan, is_trial, trial_ends_at')
+      .select('billing_plan, is_trial, trial_ends_at, cancelled_at')
       .eq('school_id', schoolId)
       .eq('status', 'active')
       .single();
@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       plan: data.billing_plan,
       isTrial: data.is_trial,
       trialEndsAt: data.trial_ends_at,
+      cancelledAt: data.cancelled_at,
     });
   } catch {
     return NextResponse.json({ plan: null });

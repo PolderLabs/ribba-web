@@ -23,12 +23,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
 
-    const { data: instructor } = await supabase
+    const { data: instructors } = await supabase
       .from('instructors')
-      .select('drivingschool_id, drivingschools(name)')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle();
+      .select('drivingschool_id, status, drivingschools(name)')
+      .eq('user_id', user.id);
+
+    // Prefer active, fall back to any other row
+    const instructor =
+      instructors?.find((i) => i.status === 'active') ?? instructors?.[0];
 
     if (!instructor) {
       return NextResponse.json({ error: 'Geen rijschool gekoppeld.' }, { status: 404 });

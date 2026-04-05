@@ -46,8 +46,11 @@ function UpgradeContent() {
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [isTrial, setIsTrial] = useState(false);
+  const [cancelledAt, setCancelledAt] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
 
   // Fetch current plan (requires auth)
   useEffect(() => {
@@ -78,6 +81,7 @@ function UpgradeContent() {
           if (!body) return;
           setCurrentPlan(body.plan);
           setIsTrial(body.isTrial || false);
+          setCancelledAt(body.cancelledAt || null);
         })
         .catch(() => {})
         .finally(() => setPlanLoading(false));
@@ -119,6 +123,41 @@ function UpgradeContent() {
     } catch {
       setError('Kan geen verbinding maken. Probeer het opnieuw.');
       setLoading(null);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!schoolId || !accessToken) return;
+    if (!confirm('Weet je zeker dat je je abonnement wilt opzeggen? Je houdt toegang tot het einde van de huidige betaalperiode.')) {
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/cancel-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ school_id: schoolId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Er ging iets mis bij het opzeggen.');
+        setCancelling(false);
+        return;
+      }
+
+      setCancelSuccess(true);
+      setCancelledAt(new Date().toISOString());
+    } catch {
+      setError('Kan geen verbinding maken. Probeer het opnieuw.');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -243,6 +282,45 @@ function UpgradeContent() {
             )}
           </div>
         </div>
+
+        {/* Cancel subscription */}
+        {currentPlan && !isTrial && !cancelledAt && !cancelSuccess && (
+          <div style={{ textAlign: 'center', marginTop: 32 }}>
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#DC2626',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: cancelling ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+                opacity: cancelling ? 0.5 : 1,
+              }}
+            >
+              {cancelling ? 'Bezig met opzeggen...' : 'Abonnement opzeggen'}
+            </button>
+          </div>
+        )}
+
+        {(cancelledAt || cancelSuccess) && (
+          <div
+            style={{
+              marginTop: 32,
+              padding: 16,
+              background: '#FEF3C7',
+              border: '1px solid #FCD34D',
+              borderRadius: 12,
+              textAlign: 'center',
+              color: '#92400E',
+              fontSize: 14,
+            }}
+          >
+            Je abonnement is opgezegd. Je hebt nog toegang tot het einde van de huidige betaalperiode.
+          </div>
+        )}
 
         {/* Bottom */}
         <div style={{ textAlign: 'center', marginTop: 48 }}>
