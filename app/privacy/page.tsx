@@ -3,9 +3,9 @@ import Link from "next/link";
 import RibbaLogo from "../components/RibbaLogo";
 
 export const metadata: Metadata = {
-  title: "Privacyverklaring | Ribba",
+  title: "Privacyverklaring | Ribba Rijschool Planner",
   description:
-    "Privacyverklaring van Ribba rijschoolsoftware. Lees hoe wij omgaan met persoonsgegevens conform de AVG/GDPR.",
+    "Privacyverklaring van Ribba Rijschool Planner. Lees hoe wij omgaan met persoonsgegevens conform de AVG/GDPR.",
 };
 
 const styles = {
@@ -97,8 +97,13 @@ export default function PrivacyPage() {
         <RibbaLogo height={36} />
       </Link>
 
-      <h1 style={styles.h1}>Privacyverklaring</h1>
-      <p style={styles.updated}>Laatst bijgewerkt: maart 2026</p>
+      <h1 style={styles.h1}>Privacyverklaring — Ribba Rijschool Planner</h1>
+      <p style={styles.updated}>Laatst bijgewerkt: april 2026</p>
+      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
+        Deze privacyverklaring geldt voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
+        Voor de privacyverklaring van de Ribba vergelijkingssite, zie{' '}
+        <a href="https://ribba.app/privacybeleid" style={{ color: '#1E40AF', textDecoration: 'underline' }}>ribba.app/privacybeleid</a>.
+      </div>
 
       <p style={styles.p}>
         Ribba hecht groot belang aan de bescherming

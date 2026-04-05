@@ -3,9 +3,9 @@ import Link from "next/link";
 import RibbaLogo from "../components/RibbaLogo";
 
 export const metadata: Metadata = {
-  title: "Algemene Voorwaarden | Ribba",
+  title: "Algemene Voorwaarden | Ribba Rijschool Planner",
   description:
-    "Algemene voorwaarden van Ribba rijschoolsoftware. Lees hier de voorwaarden voor het gebruik van onze SaaS-diensten.",
+    "Algemene voorwaarden van Ribba Rijschool Planner. Lees hier de voorwaarden voor het gebruik van onze rijschoolsoftware.",
 };
 
 const styles = {
@@ -97,8 +97,13 @@ export default function VoorwaardenPage() {
         <RibbaLogo height={36} />
       </Link>
 
-      <h1 style={styles.h1}>Algemene Voorwaarden</h1>
-      <p style={styles.updated}>Laatst bijgewerkt: maart 2026</p>
+      <h1 style={styles.h1}>Algemene Voorwaarden — Ribba Rijschool Planner</h1>
+      <p style={styles.updated}>Laatst bijgewerkt: april 2026</p>
+      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
+        Deze voorwaarden gelden voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
+        Voor de voorwaarden van de Ribba vergelijkingssite, zie{' '}
+        <a href="https://ribba.app/voorwaarden" style={{ color: '#1E40AF', textDecoration: 'underline' }}>ribba.app/voorwaarden</a>.
+      </div>
 
       {/* Artikel 1 */}
       <h2 style={styles.h2}>Artikel 1 — Definities</h2>

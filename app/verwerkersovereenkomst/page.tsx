@@ -3,9 +3,9 @@ import Link from "next/link";
 import RibbaLogo from "../components/RibbaLogo";
 
 export const metadata: Metadata = {
-  title: "Verwerkersovereenkomst | Ribba",
+  title: "Verwerkersovereenkomst | Ribba Rijschool Planner",
   description:
-    "Verwerkersovereenkomst van Ribba rijschoolsoftware conform de AVG/GDPR. Voor rijscholen die Ribba gebruiken als verwerker van persoonsgegevens.",
+    "Verwerkersovereenkomst van Ribba Rijschool Planner conform de AVG/GDPR. Voor rijscholen die Ribba gebruiken als verwerker van persoonsgegevens.",
 };
 
 const styles = {
@@ -103,8 +103,11 @@ export default function VerwerkersovereenkomstPage() {
         <RibbaLogo height={36} />
       </Link>
 
-      <h1 style={styles.h1}>Verwerkersovereenkomst</h1>
-      <p style={styles.updated}>Laatst bijgewerkt: maart 2026</p>
+      <h1 style={styles.h1}>Verwerkersovereenkomst — Ribba Rijschool Planner</h1>
+      <p style={styles.updated}>Laatst bijgewerkt: april 2026</p>
+      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
+        Deze verwerkersovereenkomst geldt voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
+      </div>
 
       <p style={styles.intro}>
         Deze verwerkersovereenkomst (&quot;Overeenkomst&quot;) maakt onderdeel
