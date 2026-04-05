@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/rate-limit';
+import { isValidEmail, isValidPhone, isMinimumAge } from '@/utils/validation';
+import { isValidPostalCode } from '@/lib/validation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -7,6 +10,15 @@ const resendApiKey = process.env.RESEND_API_KEY;
 
 function getSupabase() {
   return createClient(supabaseUrl, supabaseServiceKey);
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
@@ -31,6 +43,11 @@ async function sendEmail(to: string, subject: string, html: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  if (!rateLimit(`register:${ip}`, { maxRequests: 5, windowMs: 60_000 })) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 });
+  }
+
   try {
     const body = await request.json();
 
@@ -47,12 +64,29 @@ export async function POST(request: NextRequest) {
       drivingschool_id,
     } = body;
 
-    // Basic server-side validation
+    // Server-side validation
     if (!first_name || !last_name || !email || !phone || !address || !postal_code || !city || !license_type || !date_of_birth || !drivingschool_id) {
       return NextResponse.json(
         { error: 'Alle velden zijn verplicht.' },
         { status: 400 },
       );
+    }
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Ongeldig e-mailadres.' }, { status: 400 });
+    }
+    if (!isValidPhone(phone)) {
+      return NextResponse.json({ error: 'Ongeldig telefoonnummer.' }, { status: 400 });
+    }
+    if (!isValidPostalCode(postal_code)) {
+      return NextResponse.json({ error: 'Ongeldige postcode.' }, { status: 400 });
+    }
+    if (!isMinimumAge(date_of_birth, 16)) {
+      return NextResponse.json({ error: 'Je moet minimaal 16 jaar oud zijn.' }, { status: 400 });
+    }
+
+    const validLicenseTypes = ['B', 'A', 'A1', 'A2', 'AM'];
+    if (!validLicenseTypes.includes(license_type)) {
+      return NextResponse.json({ error: 'Ongeldig rijbewijstype.' }, { status: 400 });
     }
 
     const supabase = getSupabase();
@@ -112,7 +146,7 @@ export async function POST(request: NextRequest) {
     // Send confirmation email to student
     await sendEmail(
       email.trim().toLowerCase(),
-      `Bevestiging inschrijving bij ${school.name}`,
+      `Bevestiging inschrijving bij ${escapeHtml(school.name)}`,
       `
       <div style="font-family: Inter, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
         <div style="background: #0d9488; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
@@ -120,14 +154,14 @@ export async function POST(request: NextRequest) {
         </div>
         <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin-bottom: 16px;">Inschrijving ontvangen</h1>
         <p style="color: #64748b; line-height: 1.6; font-size: 15px;">
-          Hoi ${first_name},<br><br>
-          Je inschrijving bij <strong>${school.name}</strong> is ontvangen. De rijschool neemt binnenkort contact met je op.
+          Hoi ${escapeHtml(first_name)},<br><br>
+          Je inschrijving bij <strong>${escapeHtml(school.name)}</strong> is ontvangen. De rijschool neemt binnenkort contact met je op.
         </p>
         <div style="margin-top: 24px; padding: 16px; background: #f0fdfa; border-radius: 12px;">
           <p style="font-size: 13px; color: #64748b; margin: 0;">
-            <strong>Naam:</strong> ${first_name} ${last_name}<br>
-            <strong>E-mail:</strong> ${email}<br>
-            <strong>Rijbewijs:</strong> ${license_type}
+            <strong>Naam:</strong> ${escapeHtml(first_name)} ${escapeHtml(last_name)}<br>
+            <strong>E-mail:</strong> ${escapeHtml(email)}<br>
+            <strong>Rijbewijs:</strong> ${escapeHtml(license_type)}
           </p>
         </div>
         <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">
@@ -141,7 +175,7 @@ export async function POST(request: NextRequest) {
     if (school.email) {
       await sendEmail(
         school.email,
-        `Nieuwe inschrijving: ${first_name} ${last_name}`,
+        `Nieuwe inschrijving: ${escapeHtml(first_name)} ${escapeHtml(last_name)}`,
         `
         <div style="font-family: Inter, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
           <div style="background: #0d9488; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
@@ -153,12 +187,12 @@ export async function POST(request: NextRequest) {
           </p>
           <div style="margin-top: 24px; padding: 16px; background: #f0fdfa; border-radius: 12px;">
             <p style="font-size: 13px; color: #64748b; margin: 0;">
-              <strong>Naam:</strong> ${first_name} ${last_name}<br>
-              <strong>E-mail:</strong> ${email}<br>
-              <strong>Telefoon:</strong> ${phone}<br>
-              <strong>Adres:</strong> ${address}, ${postal_code} ${city}<br>
-              <strong>Geboortedatum:</strong> ${date_of_birth}<br>
-              <strong>Rijbewijs:</strong> ${license_type}<br>
+              <strong>Naam:</strong> ${escapeHtml(first_name)} ${escapeHtml(last_name)}<br>
+              <strong>E-mail:</strong> ${escapeHtml(email)}<br>
+              <strong>Telefoon:</strong> ${escapeHtml(phone)}<br>
+              <strong>Adres:</strong> ${escapeHtml(address)}, ${escapeHtml(postal_code)} ${escapeHtml(city)}<br>
+              <strong>Geboortedatum:</strong> ${escapeHtml(date_of_birth)}<br>
+              <strong>Rijbewijs:</strong> ${escapeHtml(license_type)}<br>
               <strong>Status:</strong> Wachtlijst
             </p>
           </div>

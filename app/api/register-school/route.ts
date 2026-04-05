@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/rate-limit';
+import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
+import { isValidPostalCode } from '@/lib/validation';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function generateSlug(name: string): string {
@@ -38,6 +50,11 @@ async function sendEmail(to: string, subject: string, html: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  if (!rateLimit(`register-school:${ip}`, { maxRequests: 3, windowMs: 60_000 })) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 });
+  }
+
   let authUserId: string | null = null;
   const supabase = getSupabase();
 
@@ -74,21 +91,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if email already exists in auth.users
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const emailLower = email.trim().toLowerCase();
-    const emailExists = existingUsers?.users?.some(
-      (u) => u.email?.toLowerCase() === emailLower,
-    );
-
-    if (emailExists) {
-      return NextResponse.json(
-        { error: 'Dit e-mailadres is al in gebruik.' },
-        { status: 409 },
-      );
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Ongeldig e-mailadres.' }, { status: 400 });
+    }
+    if (!isValidPhone(phone)) {
+      return NextResponse.json({ error: 'Ongeldig telefoonnummer.' }, { status: 400 });
+    }
+    if (!isValidPostalCode(postal_code)) {
+      return NextResponse.json({ error: 'Ongeldige postcode.' }, { status: 400 });
+    }
+    if (!isValidKVK(kvk_number)) {
+      return NextResponse.json({ error: 'Ongeldig KVK-nummer (8 cijfers).' }, { status: 400 });
+    }
+    if (!isValidIBAN(iban)) {
+      return NextResponse.json({ error: 'Ongeldig IBAN-nummer.' }, { status: 400 });
     }
 
-    // 1. Create auth user
+    const emailLower = email.trim().toLowerCase();
+
+    // 1. Create auth user (duplicate email returns an error)
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: emailLower,
       password,
@@ -100,8 +121,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (authError || !authData.user) {
+    if (authError) {
+      if (authError.message?.toLowerCase().includes('already') || authError.status === 422) {
+        return NextResponse.json(
+          { error: 'Dit e-mailadres is al in gebruik.' },
+          { status: 409 },
+        );
+      }
       console.error('Auth error:', authError);
+      return NextResponse.json(
+        { error: 'Kon account niet aanmaken. Probeer het opnieuw.' },
+        { status: 500 },
+      );
+    }
+
+    if (!authData.user) {
       return NextResponse.json(
         { error: 'Kon account niet aanmaken. Probeer het opnieuw.' },
         { status: 500 },
@@ -110,16 +144,21 @@ export async function POST(request: NextRequest) {
 
     authUserId = authData.user.id;
 
-    // 2. Generate unique registration slug
+    // 2. Generate unique registration slug (retry on collision)
     let slug = generateSlug(school_name);
-    const { data: existingSlugs } = await supabase
-      .from('drivingschools')
-      .select('registration_slug')
-      .like('registration_slug', `${slug}%`);
-
-    if (existingSlugs && existingSlugs.length > 0) {
-      slug = `${slug}-${existingSlugs.length + 1}`;
+    let slugAttempt = slug;
+    let suffix = 1;
+    while (true) {
+      const { data: existing } = await supabase
+        .from('drivingschools')
+        .select('id')
+        .eq('registration_slug', slugAttempt)
+        .maybeSingle();
+      if (!existing) break;
+      suffix++;
+      slugAttempt = `${slug}-${suffix}`;
     }
+    slug = slugAttempt;
 
     // 3. Insert driving school
     const { data: school, error: schoolError } = await supabase
@@ -204,9 +243,9 @@ export async function POST(request: NextRequest) {
         </div>
         <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin-bottom: 16px;">Welkom bij Ribba!</h1>
         <p style="color: #64748b; line-height: 1.6; font-size: 15px;">
-          Hoi ${first_name.trim()},<br><br>
-          Gefeliciteerd! Je account voor <strong>${school_name.trim()}</strong> is aangemaakt.
-          Je hebt <strong>3 maanden gratis</strong> toegang tot alle functies.
+          Hoi ${escapeHtml(first_name.trim())},<br><br>
+          Gefeliciteerd! Je account voor <strong>${escapeHtml(school_name.trim())}</strong> is aangemaakt.
+          Je hebt <strong>je eerste maand gratis</strong> toegang tot alle functies.
         </p>
         <div style="margin-top: 24px; padding: 16px; background: #eff6ff; border-radius: 12px;">
           <p style="font-size: 13px; color: #64748b; margin: 0;">

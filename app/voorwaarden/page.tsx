@@ -195,7 +195,7 @@ export default function VoorwaardenPage() {
       {/* Artikel 4 */}
       <h2 style={styles.h2}>Artikel 4 — Proefperiode</h2>
       <p style={styles.p}>
-        4.1. Nieuwe Gebruikers ontvangen een gratis proefperiode van 3 maanden
+        4.1. Nieuwe Gebruikers ontvangen een gratis proefperiode van 1 maand
         met volledige toegang tot alle functionaliteiten.
       </p>
       <p style={styles.p}>

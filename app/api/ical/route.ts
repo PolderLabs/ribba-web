@@ -10,12 +10,12 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('t');
 
-  if (!token) {
-    return NextResponse.json({ error: 'Token ontbreekt' }, { status: 400 });
+  if (!token || !/^[a-zA-Z0-9_-]+$/.test(token)) {
+    return NextResponse.json({ error: 'Token ontbreekt of is ongeldig' }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const target = `${supabaseUrl}/functions/v1/ical-feed?token=${token}`;
+  const target = `${supabaseUrl}/functions/v1/ical-feed?token=${encodeURIComponent(token)}`;
 
   return NextResponse.redirect(target, 301);
 }

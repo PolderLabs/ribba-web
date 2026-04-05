@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createMollieClient, SequenceType } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/rate-limit';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -16,6 +17,11 @@ const PLANS = {
 } as const;
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+  if (!rateLimit(`checkout:${ip}`, { maxRequests: 5, windowMs: 60_000 })) {
+    return NextResponse.json({ error: 'Te veel verzoeken. Probeer het later opnieuw.' }, { status: 429 });
+  }
+
   try {
     const { school_id, plan } = await request.json();
 
@@ -24,6 +30,26 @@ export async function POST(request: NextRequest) {
         { error: 'school_id en plan (basic/premium) zijn verplicht.' },
         { status: 400 },
       );
+    }
+
+    // Verify the caller owns this school
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Niet ingelogd.' }, { status: 401 });
+    }
+    const { data: { user }, error: authError } = await getSupabase().auth.getUser(authHeader.replace('Bearer ', ''));
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
+    }
+    const { data: instructor } = await getSupabase()
+      .from('instructors')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('drivingschool_id', school_id)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!instructor) {
+      return NextResponse.json({ error: 'Geen toegang tot deze rijschool.' }, { status: 403 });
     }
 
     const planInfo = PLANS[plan as keyof typeof PLANS];

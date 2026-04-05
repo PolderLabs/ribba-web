@@ -138,7 +138,7 @@ export default function ProPage() {
                 textDecoration: 'none',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
               }}>
-                30 dagen gratis proberen
+                Eerste maand gratis
               </Link>
               <a href="https://apps.apple.com/app/ribba/id6739950062"
                 target="_blank" rel="noopener noreferrer"
@@ -189,7 +189,7 @@ export default function ProPage() {
           alignItems: 'center', justifyContent: 'center',
         }}>
           {[
-            { num: '30 dagen', label: 'gratis proberen' },
+            { num: 'Eerste maand', label: 'gratis' },
             { num: 'iCloud & Google', label: 'agenda-synchronisatie' },
             { num: 'CBR TOP', label: 'officiële koppeling' },
             { num: 'Mollie iDEAL', label: 'leerlingbetalingen' },
@@ -347,7 +347,7 @@ export default function ProPage() {
                 Eerlijk en transparant
               </h2>
               <p style={{ color: '#57534E', marginTop: 10, fontSize: 16 }}>
-                Start met 30 dagen gratis proberen — geen creditcard vereist.
+                Eerste maand gratis — geen creditcard vereist.
               </p>
             </div>
 
@@ -374,7 +374,7 @@ export default function ProPage() {
                 <Link href="/registreren" className="btn-trial" style={{ textDecoration: 'none', display: 'flex' }}>
                   Probeer gratis
                 </Link>
-                <p className="plan-trial-note">30 dagen gratis · daarna €25/mnd · annuleer altijd</p>
+                <p className="plan-trial-note">Eerste maand gratis · daarna €25/mnd · annuleer altijd</p>
               </div>
 
               {/* Premium */}
@@ -400,7 +400,7 @@ export default function ProPage() {
                 <Link href="/registreren" className="btn-primary" style={{ textDecoration: 'none', display: 'flex' }}>
                   Probeer gratis
                 </Link>
-                <p className="plan-trial-note">30 dagen gratis · daarna €45/mnd · annuleer altijd</p>
+                <p className="plan-trial-note">Eerste maand gratis · daarna €45/mnd · annuleer altijd</p>
               </div>
             </div>
 
@@ -438,7 +438,7 @@ export default function ProPage() {
             Klaar om te starten?
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 17, lineHeight: 1.6, marginBottom: 32 }}>
-            Download Ribba – Rijschool Planner en probeer 30 dagen gratis. Geen creditcard, geen verplichtingen.
+            Download Ribba – Rijschool Planner. Eerste maand gratis, geen creditcard, geen verplichtingen.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link href="/registreren" style={{

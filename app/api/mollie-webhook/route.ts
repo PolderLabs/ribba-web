@@ -33,6 +33,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' });
     }
 
+    // Verify the school exists and matches the payment
+    const { data: school } = await getSupabase()
+      .from('drivingschools')
+      .select('id')
+      .eq('id', school_id)
+      .maybeSingle();
+    if (!school) {
+      console.error('Webhook: school_id does not exist', school_id);
+      return NextResponse.json({ status: 'ok' });
+    }
+
     // Only process paid first payments (subscription setup)
     if (payment.status === 'paid' && type === 'subscription_setup') {
       // Get the license record
@@ -83,10 +94,8 @@ export async function POST(request: NextRequest) {
         } catch (subError) {
           console.error('Failed to create subscription:', subError);
         }
-      }
-
-      // Update license plan regardless (in case subscription creation fails)
-      if (license) {
+      } else if (license) {
+        // Subscription creation failed — still update the plan
         await getSupabase()
           .from('instructor_licenses')
           .update({

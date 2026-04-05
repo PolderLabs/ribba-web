@@ -17,6 +17,26 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = getSupabase();
+
+    // Verify the caller owns this school
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Niet ingelogd.' }, { status: 401 });
+    }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
+    }
+    const { data: instructor } = await supabase
+      .from('instructors')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('drivingschool_id', schoolId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!instructor) {
+      return NextResponse.json({ error: 'Geen toegang.' }, { status: 403 });
+    }
     const { data, error } = await supabase
       .from('instructor_licenses')
       .select('billing_plan, is_trial, trial_ends_at')
