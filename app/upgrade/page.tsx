@@ -47,6 +47,7 @@ function UpgradeContent() {
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [isTrial, setIsTrial] = useState(false);
   const [cancelledAt, setCancelledAt] = useState<string | null>(null);
+  const [periodEnd, setPeriodEnd] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -82,6 +83,7 @@ function UpgradeContent() {
           setCurrentPlan(body.plan);
           setIsTrial(body.isTrial || false);
           setCancelledAt(body.cancelledAt || null);
+          setPeriodEnd(body.periodEnd || null);
         })
         .catch(() => {})
         .finally(() => setPlanLoading(false));
@@ -318,7 +320,11 @@ function UpgradeContent() {
               fontSize: 14,
             }}
           >
-            Je abonnement is opgezegd. Je hebt nog toegang tot het einde van de huidige betaalperiode.
+            Je abonnement is opgezegd.
+            {periodEnd && (
+              <> Je hebt toegang tot <strong>{new Date(periodEnd).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.</>
+            )}
+            {!periodEnd && ' Je hebt nog toegang tot het einde van de huidige betaalperiode.'}
           </div>
         )}
 

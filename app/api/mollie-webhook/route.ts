@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
             metadata: JSON.stringify({ school_id, plan, type: 'recurring' }),
           });
 
-          // Update license: plan active immediately, subscription for future billing
+          // period_end = next billing date (startDate). First month is already paid for
+          // so access is valid until that date at minimum.
           await getSupabase()
             .from('instructor_licenses')
             .update({
@@ -87,6 +88,8 @@ export async function POST(request: NextRequest) {
               mollie_customer_id: customerId,
               is_trial: false,
               price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '45'),
+              period_end: startDate.toISOString(),
+              cancelled_at: null,
             })
             .eq('id', license?.id);
 
@@ -107,9 +110,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle recurring payments (just log, plan stays active)
+    // Handle recurring payments — extend period_end by 1 month
     if (payment.status === 'paid' && type === 'recurring') {
-      console.log(`Recurring payment received for school ${school_id}, plan: ${plan}`);
+      const newPeriodEnd = new Date();
+      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+
+      await getSupabase()
+        .from('instructor_licenses')
+        .update({ period_end: newPeriodEnd.toISOString() })
+        .eq('school_id', school_id)
+        .eq('status', 'active');
+
+      console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
     }
 
     // Handle failed recurring payment

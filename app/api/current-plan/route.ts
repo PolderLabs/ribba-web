@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await supabase
       .from('instructor_licenses')
-      .select('billing_plan, is_trial, trial_ends_at, cancelled_at')
+      .select('billing_plan, is_trial, trial_ends_at, cancelled_at, period_end')
       .eq('school_id', schoolId)
       .eq('status', 'active')
       .single();
@@ -48,11 +48,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ plan: null });
     }
 
+    // If cancelled and period_end has passed, the subscription has expired
+    const isExpired =
+      data.cancelled_at &&
+      data.period_end &&
+      new Date(data.period_end) < new Date();
+
     return NextResponse.json({
-      plan: data.billing_plan,
+      plan: isExpired ? null : data.billing_plan,
       isTrial: data.is_trial,
       trialEndsAt: data.trial_ends_at,
       cancelledAt: data.cancelled_at,
+      periodEnd: data.period_end,
+      isExpired: Boolean(isExpired),
     });
   } catch {
     return NextResponse.json({ plan: null });
