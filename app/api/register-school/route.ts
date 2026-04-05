@@ -173,8 +173,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Insert instructor license (90-day trial)
-    const trialEndsAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+    // 5. Insert instructor license (30-day trial)
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const { error: licenseError } = await supabase
       .from('instructor_licenses')
       .insert({
