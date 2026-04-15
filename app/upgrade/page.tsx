@@ -41,7 +41,8 @@ function CheckIcon({ color = '#16A34A' }: { color?: string }) {
 function UpgradeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const schoolId = searchParams.get('school_id');
+  const schoolIdFromUrl = searchParams.get('school_id');
+  const [schoolId, setSchoolId] = useState<string | null>(schoolIdFromUrl);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
@@ -53,42 +54,64 @@ function UpgradeContent() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
 
-  // Fetch current plan (requires auth)
+  // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
-    if (!schoolId) {
-      setPlanLoading(false);
-      return;
-    }
-
     const supabase = getSupabaseBrowser();
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) {
         router.replace('/login');
         return;
       }
-      setAccessToken(data.session.access_token);
+      const token = data.session.access_token;
+      setAccessToken(token);
 
-      fetch(`/api/current-plan?school_id=${schoolId}`, {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      })
-        .then((res) => {
-          if (res.status === 401 || res.status === 403) {
-            router.replace('/login');
-            return null;
+      // Resolve school_id: URL > /api/me lookup
+      let resolvedSchoolId = schoolIdFromUrl;
+      if (!resolvedSchoolId) {
+        try {
+          const meRes = await fetch('/api/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!meRes.ok) {
+            setError('Geen rijschool gekoppeld aan dit account.');
+            setPlanLoading(false);
+            return;
           }
-          return res.json();
-        })
-        .then((body) => {
-          if (!body) return;
-          setCurrentPlan(body.plan);
-          setIsTrial(body.isTrial || false);
-          setCancelledAt(body.cancelledAt || null);
-          setPeriodEnd(body.periodEnd || null);
-        })
-        .catch(() => {})
-        .finally(() => setPlanLoading(false));
+          const me = await meRes.json();
+          resolvedSchoolId = me.school_id;
+          setSchoolId(resolvedSchoolId);
+        } catch {
+          setError('Kan geen verbinding maken met de server.');
+          setPlanLoading(false);
+          return;
+        }
+      }
+
+      if (!resolvedSchoolId) {
+        setPlanLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/current-plan?school_id=${resolvedSchoolId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 401 || res.status === 403) {
+          router.replace('/login');
+          return;
+        }
+        const body = await res.json();
+        setCurrentPlan(body.plan);
+        setIsTrial(body.isTrial || false);
+        setCancelledAt(body.cancelledAt || null);
+        setPeriodEnd(body.periodEnd || null);
+      } catch {
+        // ignore
+      } finally {
+        setPlanLoading(false);
+      }
     });
-  }, [schoolId, router]);
+  }, [schoolIdFromUrl, router]);
 
   const handleCheckout = async (plan: 'basic' | 'premium') => {
     if (!schoolId) {
