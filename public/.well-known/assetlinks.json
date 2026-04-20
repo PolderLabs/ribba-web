@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.ribba.pro",
+      "sha256_cert_fingerprints": [
+        "31:A5:2C:4E:E3:D3:64:BF:1C:17:51:2A:80:FA:53:50:89:39:20:1D:D0:D8:1D:8F:B3:A6:D9:A7:94:C1:E8:8C"
+      ]
+    }
+  }
+]
