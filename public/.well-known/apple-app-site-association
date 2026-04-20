@@ -1,0 +1,27 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "486FCW8KK7.app.ribba.pro",
+        "paths": [
+          "/rijschool-planner",
+          "/rijschool-planner/*",
+          "/join",
+          "/join/*",
+          "/reset",
+          "/reset/*",
+          "/login",
+          "/upgrade",
+          "/upgrade/*",
+          "/registreren",
+          "/payment",
+          "/payment/*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["486FCW8KK7.app.ribba.pro"]
+  }
+}
