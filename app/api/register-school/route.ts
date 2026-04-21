@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -233,7 +234,25 @@ export async function POST(request: NextRequest) {
       // Non-fatal: continue anyway, license can be added manually
     }
 
-    // 6. Send welcome email
+    // 6. Create multi-use invitation link for the school
+    const { error: inviteLinkError } = await supabase
+      .from('invitation_links')
+      .insert({
+        instructor_id: instructor.id,
+        drivingschool_id: school.id,
+        code: slug,
+        email: emailLower,
+        is_multi_use: true,
+        invite_type: 'student',
+        expires_at: '2099-01-01T00:00:00Z',
+      });
+
+    if (inviteLinkError) {
+      console.error('Invite link insert error:', inviteLinkError);
+      // Non-fatal: continue anyway
+    }
+
+    // 7. Send welcome email
     await sendEmail(
       emailLower,
       'Welkom bij Ribba! 🎉',
@@ -262,8 +281,8 @@ export async function POST(request: NextRequest) {
           Download de Ribba app en log in met je e-mailadres en wachtwoord:
         </p>
         <div style="margin-top: 16px;">
-          <a href="https://apps.apple.com/app/ribba/id6741070498" style="display: inline-block; background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px;">🍎 App Store</a>
-          <a href="https://play.google.com/store/apps/details?id=app.ribba.pro" style="display: inline-block; background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">▶️ Google Play</a>
+          <a href="${APP_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px;">Download in App Store</a>
+          <a href="${PLAY_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Ontdek in Google Play</a>
         </div>
         <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">
           Vragen? Mail ons op <a href="mailto:hallo@ribba.app" style="color: #2563EB;">hallo@ribba.app</a>
