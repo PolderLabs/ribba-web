@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         role: 'instructor',
         first_name: first_name.trim(),
         last_name: last_name.trim(),
+        name: `${first_name.trim()} ${last_name.trim()}`,
       },
     });
 
