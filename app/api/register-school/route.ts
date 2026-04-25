@@ -29,7 +29,7 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-const VERIFY_REDIRECT_URL = 'https://ribba.app/welkom';
+const VERIFY_REDIRECT_URL = 'https://link.ribba.app/welkom';
 
 async function sendEmail(to: string, subject: string, html: string) {
   if (!resendApiKey) {
