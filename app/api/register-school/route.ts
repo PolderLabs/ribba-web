@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
+import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 
@@ -28,6 +28,8 @@ function generateSlug(name: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
+
+const VERIFY_REDIRECT_URL = 'https://ribba.app/welkom';
 
 async function sendEmail(to: string, subject: string, html: string) {
   if (!resendApiKey) {
@@ -73,12 +75,11 @@ export async function POST(request: NextRequest) {
       city,
       kvk_number,
       btw_number,
-      iban,
       password,
     } = body;
 
     // Server-side validation
-    if (!school_name || !first_name || !last_name || !email || !phone || !address || !postal_code || !city || !kvk_number || !iban || !password) {
+    if (!school_name || !first_name || !last_name || !email || !phone || !address || !postal_code || !city || !kvk_number || !password) {
       return NextResponse.json(
         { error: 'Alle verplichte velden moeten ingevuld zijn.' },
         { status: 400 },
@@ -104,47 +105,54 @@ export async function POST(request: NextRequest) {
     if (!isValidKVK(kvk_number)) {
       return NextResponse.json({ error: 'Ongeldig KVK-nummer (8 cijfers).' }, { status: 400 });
     }
-    if (!isValidIBAN(iban)) {
-      return NextResponse.json({ error: 'Ongeldig IBAN-nummer.' }, { status: 400 });
-    }
 
     const emailLower = email.trim().toLowerCase();
 
-    // 1. Create auth user (duplicate email returns an error)
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // 1. Create auth user as UNCONFIRMED + generate signup confirmation link.
+    //    `generateLink({ type: 'signup' })` creates the user (unconfirmed) and
+    //    returns the email-confirmation action_link in one call. We then send
+    //    that link via Resend in our own branded email.
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'signup',
       email: emailLower,
       password,
-      email_confirm: true,
-      user_metadata: {
-        role: 'instructor',
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
-        name: `${first_name.trim()} ${last_name.trim()}`,
+      options: {
+        data: {
+          role: 'instructor',
+          first_name: first_name.trim(),
+          last_name: last_name.trim(),
+          name: `${first_name.trim()} ${last_name.trim()}`,
+        },
+        redirectTo: VERIFY_REDIRECT_URL,
       },
     });
 
-    if (authError) {
-      if (authError.message?.toLowerCase().includes('already') || authError.status === 422) {
+    if (linkError) {
+      const msg = linkError.message?.toLowerCase() ?? '';
+      if (msg.includes('already') || msg.includes('registered') || linkError.status === 422) {
         return NextResponse.json(
           { error: 'Dit e-mailadres is al in gebruik.' },
           { status: 409 },
         );
       }
-      console.error('Auth error:', authError);
+      console.error('generateLink error:', linkError);
       return NextResponse.json(
         { error: 'Kon account niet aanmaken. Probeer het opnieuw.' },
         { status: 500 },
       );
     }
 
-    if (!authData.user) {
+    const confirmationLink = linkData?.properties?.action_link;
+    const createdUser = linkData?.user;
+
+    if (!confirmationLink || !createdUser) {
       return NextResponse.json(
         { error: 'Kon account niet aanmaken. Probeer het opnieuw.' },
         { status: 500 },
       );
     }
 
-    authUserId = authData.user.id;
+    authUserId = createdUser.id;
 
     // 2. Generate unique registration slug (retry on collision)
     let slug = generateSlug(school_name);
@@ -174,7 +182,7 @@ export async function POST(request: NextRequest) {
         email: emailLower,
         kvk_number: kvk_number.replace(/\s/g, '').trim(),
         btw_number: btw_number ? btw_number.replace(/\s/g, '').toUpperCase().trim() : null,
-        iban: iban.replace(/\s/g, '').toUpperCase().trim(),
+        iban: null,
         registration_slug: slug,
         registration_enabled: true,
         status: 'active',
@@ -252,24 +260,34 @@ export async function POST(request: NextRequest) {
       // Non-fatal: continue anyway
     }
 
-    // 7. Send welcome email
+    // 7. Send branded confirmation email — user MUST click the link to
+    //    verify their email address before they can log in.
     await sendEmail(
       emailLower,
-      'Welkom bij Ribba! 🎉',
+      'Bevestig je e-mailadres voor Ribba',
       `
-      <div style="font-family: Inter, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+      <div style="font-family: Inter, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px; color: #1e293b;">
         <div style="background: #2563EB; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
           <span style="color: #fff; font-weight: 900; font-size: 20px;">R</span>
         </div>
-        <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin-bottom: 16px;">Welkom bij Ribba!</h1>
-        <p style="color: #64748b; line-height: 1.6; font-size: 15px;">
+        <h1 style="font-size: 24px; font-weight: 800; margin: 0 0 16px 0;">Welkom bij Ribba! 🎉</h1>
+        <p style="color: #64748b; line-height: 1.6; font-size: 15px; margin: 0 0 20px 0;">
           Hoi ${escapeHtml(first_name.trim())},<br><br>
-          Gefeliciteerd! Je account voor <strong>${escapeHtml(school_name.trim())}</strong> is aangemaakt.
-          Je hebt <strong>je eerste maand gratis</strong> toegang tot alle functies.
+          Je account voor <strong>${escapeHtml(school_name.trim())}</strong> staat klaar.
+          Klik op de knop hieronder om je e-mailadres te bevestigen — daarna kun je inloggen in de Ribba app.
         </p>
-        <div style="margin-top: 24px; padding: 16px; background: #eff6ff; border-radius: 12px;">
-          <p style="font-size: 13px; color: #64748b; margin: 0;">
-            <strong>Wat kun je met Premium?</strong><br>
+        <div style="margin: 28px 0;">
+          <a href="${confirmationLink}" style="display: inline-block; background: #2563EB; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-size: 15px; font-weight: 700;">
+            Bevestig mijn e-mailadres →
+          </a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; margin: 0 0 28px 0;">
+          Werkt de knop niet? Kopieer deze link in je browser:<br>
+          <a href="${confirmationLink}" style="color: #2563EB; word-break: break-all;">${confirmationLink}</a>
+        </p>
+        <div style="padding: 16px; background: #eff6ff; border-radius: 12px; margin-bottom: 24px;">
+          <p style="font-size: 13px; color: #1e293b; font-weight: 700; margin: 0 0 6px 0;">Je krijgt 30 dagen Premium gratis:</p>
+          <p style="font-size: 13px; color: #475569; margin: 0; line-height: 1.7;">
             ✅ Onbeperkt leerlingen beheren<br>
             ✅ Facturatie & pakketten<br>
             ✅ CBR-koppeling<br>
@@ -277,14 +295,15 @@ export async function POST(request: NextRequest) {
             ✅ Leerling-inschrijfpagina
           </p>
         </div>
-        <p style="color: #64748b; line-height: 1.6; font-size: 15px; margin-top: 24px;">
-          Download de Ribba app en log in met je e-mailadres en wachtwoord:
+        <p style="color: #1e293b; line-height: 1.6; font-size: 15px; font-weight: 600; margin: 0 0 12px 0;">
+          Download alvast de Ribba app:
         </p>
-        <div style="margin-top: 16px;">
-          <a href="${APP_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px;">Download in App Store</a>
-          <a href="${PLAY_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Ontdek in Google Play</a>
+        <div style="margin-bottom: 24px;">
+          <a href="${APP_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px; margin-bottom: 8px;">📱 App Store</a>
+          <a href="${PLAY_STORE_URL}" style="display: inline-block; background: #000; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">▶ Google Play</a>
         </div>
-        <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">
+        <p style="color: #94a3b8; font-size: 13px; margin: 24px 0 0 0;">
+          Geen account aangemaakt bij Ribba? Negeer deze e-mail dan.<br>
           Vragen? Mail ons op <a href="mailto:hallo@ribba.app" style="color: #2563EB;">hallo@ribba.app</a>
         </p>
       </div>

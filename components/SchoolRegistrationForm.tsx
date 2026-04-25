@@ -2,7 +2,8 @@
 
 import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
-import { isValidEmail, isValidPhone, isValidKVK, isValidIBAN } from '@/utils/validation';
+import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
+import { StoreBadges } from '@/app/components/StoreBadges';
 
 type FormData = {
   school_name: string;
@@ -15,7 +16,6 @@ type FormData = {
   city: string;
   kvk_number: string;
   btw_number: string;
-  iban: string;
   password: string;
   password_confirm: string;
   terms_accepted: boolean;
@@ -35,7 +35,6 @@ export default function SchoolRegistrationForm() {
     city: '',
     kvk_number: '',
     btw_number: '',
-    iban: '',
     password: '',
     password_confirm: '',
     terms_accepted: false,
@@ -82,12 +81,6 @@ export default function SchoolRegistrationForm() {
 
     if (form.btw_number.trim() && !/^NL\d{9}B\d{2}$/.test(form.btw_number.replace(/\s/g, '').toUpperCase())) {
       e.btw_number = 'Ongeldig BTW-nummer (bijv. NL123456789B01)';
-    }
-
-    if (!form.iban.trim()) {
-      e.iban = 'IBAN is verplicht';
-    } else if (!isValidIBAN(form.iban)) {
-      e.iban = 'Ongeldig IBAN';
     }
 
     if (!form.password) {
@@ -158,17 +151,17 @@ export default function SchoolRegistrationForm() {
     return (
       <div style={{ textAlign: 'center', marginTop: 28 }}>
         <div className="alert alert-success">
-          <strong>Account aangemaakt!</strong><br />
-          Je kunt nu inloggen in de Ribba app.
+          <strong>Bijna klaar! 📬</strong><br />
+          We hebben je een e-mail gestuurd. Klik op de link in de mail om je account te bevestigen.
+          Daarna kun je inloggen in de Ribba app.
         </div>
-        <div className="store-badges" style={{ marginTop: 24 }}>
-          <a href="https://apps.apple.com/app/ribba/id6741070498" className="store-badge" target="_blank" rel="noopener">
-            🍎 App Store
-          </a>
-          <a href="https://play.google.com/store/apps/details?id=app.ribba.pro" className="store-badge" target="_blank" rel="noopener">
-            ▶️ Google Play
-          </a>
+        <div style={{ marginTop: 24 }}>
+          <StoreBadges />
         </div>
+        <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 16 }}>
+          Geen mail ontvangen? Check je spam-folder of mail ons op{' '}
+          <a href="mailto:hallo@ribba.app" style={{ color: '#2563EB' }}>hallo@ribba.app</a>
+        </p>
       </div>
     );
   }
@@ -315,20 +308,6 @@ export default function SchoolRegistrationForm() {
             onChange={(e) => handleChange('btw_number', e.target.value)}
           />
           {errors.btw_number && <p className="form-error">{errors.btw_number}</p>}
-        </div>
-
-        {/* IBAN */}
-        <div className="form-group full-width">
-          <label htmlFor="iban">IBAN</label>
-          <input
-            id="iban"
-            type="text"
-            placeholder="NL00ABNA0123456789"
-            className={errors.iban ? 'error' : ''}
-            value={form.iban}
-            onChange={(e) => handleChange('iban', e.target.value)}
-          />
-          {errors.iban && <p className="form-error">{errors.iban}</p>}
         </div>
 
         {/* Wachtwoord */}
