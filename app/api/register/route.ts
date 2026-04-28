@@ -152,10 +152,10 @@ export async function POST(request: NextRequest) {
         <div style="background: #0d9488; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
           <span style="color: #fff; font-weight: 900; font-size: 20px;">R</span>
         </div>
-        <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin-bottom: 16px;">Inschrijving ontvangen</h1>
+        <h1 style="font-size: 24px; font-weight: 800; color: #1e293b; margin-bottom: 16px;">Inschrijving ontvangen 🎉</h1>
         <p style="color: #64748b; line-height: 1.6; font-size: 15px;">
           Hoi ${escapeHtml(first_name)},<br><br>
-          Je inschrijving bij <strong>${escapeHtml(school.name)}</strong> is ontvangen. De rijschool neemt binnenkort contact met je op.
+          Je inschrijving bij <strong>${escapeHtml(school.name)}</strong> is goed ontvangen. De rijschool neemt binnenkort contact met je op om je rijlessen in te plannen.
         </p>
         <div style="margin-top: 24px; padding: 16px; background: #f0fdfa; border-radius: 12px;">
           <p style="font-size: 13px; color: #64748b; margin: 0;">
@@ -164,8 +164,15 @@ export async function POST(request: NextRequest) {
             <strong>Rijbewijs:</strong> ${escapeHtml(license_type)}
           </p>
         </div>
+        <div style="margin-top: 24px; padding: 16px; background: #eff6ff; border-radius: 12px;">
+          <p style="font-size: 14px; color: #1e293b; font-weight: 700; margin: 0 0 8px 0;">📱 Wat gebeurt er nu?</p>
+          <p style="font-size: 13px; color: #475569; margin: 0; line-height: 1.7;">
+            Zodra je rijschool je activeert, krijg je een <strong>tweede e-mail</strong> waarmee je een wachtwoord kunt instellen en de Ribba app kunt downloaden. Daarmee zie je je lessen, voortgang en facturen.
+          </p>
+        </div>
         <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">
-          Dit is een automatisch bericht van Ribba.
+          Dit is een automatisch bericht van Ribba.<br>
+          Vragen? Mail ons op <a href="mailto:hallo@ribba.app" style="color: #2563EB;">hallo@ribba.app</a>
         </p>
       </div>
       `,
