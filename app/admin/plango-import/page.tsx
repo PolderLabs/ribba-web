@@ -26,7 +26,8 @@ export default function PlangoImportPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  // Stored after login, sent with every API call for server-side verification
+  const [adminCreds, setAdminCreds] = useState<{ email: string; password: string } | null>(null);
 
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchool, setSelectedSchool] = useState('');
@@ -46,8 +47,14 @@ export default function PlangoImportPage() {
   async function handleAdminLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError('');
+    // Quick check client-side before hitting the server
+    if (adminEmail !== 'onderates86@gmail.com') {
+      setLoginError('Geen toegang tot dit admin panel');
+      return;
+    }
+    // Verify credentials by trying to load schools — the API route will check them
     const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
-    const { data: authData, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: adminEmail,
       password: adminPassword,
     });
@@ -55,16 +62,9 @@ export default function PlangoImportPage() {
       setLoginError('Ongeldige inloggegevens');
       return;
     }
-    // Verify it's the Ribba admin account
-    if (adminEmail !== 'onderates86@gmail.com') {
-      setLoginError('Geen toegang tot dit admin panel');
-      await supabase.auth.signOut();
-      return;
-    }
-    // Store the access token immediately — don't rely on getSession() later
-    const token = authData.session?.access_token ?? null;
-    setAccessToken(token);
-    // Load schools using the fresh token directly
+    // Store credentials for use in API calls (server verifies them)
+    setAdminCreds({ email: adminEmail, password: adminPassword });
+    // Load schools
     const { data } = await supabase
       .from('drivingschools')
       .select('id, name, registration_slug')
@@ -85,15 +85,14 @@ export default function PlangoImportPage() {
     try {
       const res = await fetch('/api/plango-import', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           slug: plangoSlug.trim(),
           email: plangoEmail.trim(),
           password: plangoPassword,
           drivingschool_id: selectedSchool,
+          admin_email: adminCreds?.email,
+          admin_password: adminCreds?.password,
         }),
       });
 
