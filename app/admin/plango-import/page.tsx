@@ -202,13 +202,14 @@ export default function PlangoImportPage() {
               Vind de slug in de URL: <strong>{plangoSlug || 'rijschool-naam'}.plangoapp.nl</strong>
             </p>
 
-            <label style={styles.label}>E-mailadres (Plango account)</label>
+            <label style={styles.label}>Gebruikersnaam (Plango account)</label>
             <input
-              type="email"
+              type="text"
               value={plangoEmail}
               onChange={(e) => setPlangoEmail(e.target.value)}
-              placeholder="eigenaar@rijschool.nl"
+              placeholder="gebruikersnaam"
               required
+              autoComplete="off"
               style={styles.input}
             />
 
