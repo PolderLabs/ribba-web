@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import RibbaLogo from '../../components/RibbaLogo';
+import { StoreBadges } from '../../components/StoreBadges';
 
 type Props = {
   params: Promise<{ code: string }>;
@@ -34,10 +35,65 @@ async function supabaseGet<T>(path: string): Promise<T | null> {
   return res.json();
 }
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { code } = await params;
+
+  // Probeer de naam van de rijschool op te halen voor een persoonlijke preview
+  let schoolName: string | null = null;
+
+  // 1. Match op registration_slug
+  const schools = await supabaseGet<{ name: string }[]>(
+    `drivingschools?registration_slug=eq.${encodeURIComponent(code)}&select=name&limit=1`,
+  );
+  if (schools && schools.length > 0) {
+    schoolName = schools[0].name;
+  } else {
+    // 2. Match op invitation_links.code
+    const invites = await supabaseGet<{ drivingschools: { name: string } | null }[]>(
+      `invitation_links?code=eq.${encodeURIComponent(code.toUpperCase())}&select=drivingschools(name)&limit=1`,
+    );
+    if (invites && invites[0]?.drivingschools?.name) {
+      schoolName = invites[0].drivingschools.name;
+    }
+  }
+
+  const title = schoolName
+    ? `Je bent uitgenodigd door ${schoolName}`
+    : 'Je bent uitgenodigd voor Ribba';
+  const description = schoolName
+    ? `Schrijf je in als leerling bij ${schoolName} via de Ribba app — plan lessen, volg je voortgang en bekijk je facturen.`
+    : 'Plan rijlessen, volg je voortgang en bekijk je facturen — allemaal via de Ribba app.';
+
+  const ogImage = 'https://link.ribba.app/og-image.png';
+
   return {
-    title: 'Uitnodiging – Ribba',
-    description: 'Je bent uitgenodigd voor de Ribba app.',
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `https://link.ribba.app/join/${code}`,
+      siteName: 'Ribba',
+      type: 'website',
+      images: [
+        {
+          url: ogImage,
+          width: 512,
+          height: 512,
+          alt: 'Ribba',
+        },
+      ],
+      locale: 'nl_NL',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImage],
+    },
+    icons: {
+      icon: ogImage,
+    },
   };
 }
 
@@ -83,8 +139,6 @@ export default async function JoinPage({ params }: Props) {
   // Personal invite → show "Open in app" page (without showing the code)
   const schoolName = invite.drivingschools?.name ?? 'je rijschool';
   const appDeepLink = `ribba://join/${invite.code}`;
-  const appStoreUrl = 'https://apps.apple.com/app/ribba/id6744055023';
-  const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.ribba.app';
 
   return (
     <main className="page-wrapper">
@@ -116,20 +170,7 @@ export default async function JoinPage({ params }: Props) {
           App nog niet? Download hem hier:
         </p>
 
-        <div className="store-badges">
-          <a href={appStoreUrl} className="store-badge" target="_blank" rel="noopener noreferrer">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
-            </svg>
-            App Store
-          </a>
-          <a href={playStoreUrl} className="store-badge" target="_blank" rel="noopener noreferrer">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 20.5v-17c0-.83.94-1.3 1.6-.8l14 8.5c.6.36.6 1.24 0 1.6l-14 8.5c-.66.5-1.6.03-1.6-.8z" />
-            </svg>
-            Google Play
-          </a>
-        </div>
+        <StoreBadges />
       </div>
     </main>
   );
