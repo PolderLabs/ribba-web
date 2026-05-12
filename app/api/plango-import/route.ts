@@ -74,8 +74,9 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-internal-secret': internalSecret,
         'Authorization': `Bearer ${supabaseServiceKey}`,
+        'x-service-key': supabaseServiceKey,
+        ...(internalSecret ? { 'x-internal-secret': internalSecret } : {}),
       },
       body: JSON.stringify({ slug, email, password, drivingschool_id }),
     });
