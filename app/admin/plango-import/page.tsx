@@ -99,8 +99,12 @@ export default function PlangoImportPage() {
 
       const data = await res.json();
 
-      // Show logs as they come in (all at once from non-streaming response)
-      if (data.logs) setLogs(data.logs);
+      // Show logs + debug info
+      const allLogs = [
+        ...(data.logs ?? []),
+        ...(data.debug ? ['── debug ──', ...data.debug] : []),
+      ];
+      if (allLogs.length > 0) setLogs(allLogs);
 
       if (data.success) {
         setResult(data.result);

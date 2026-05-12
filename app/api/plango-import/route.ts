@@ -8,6 +8,12 @@ const internalSecret = process.env.INTERNAL_FUNCTION_SECRET!;
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
+  const debug: string[] = [];
+
+  debug.push(`supabaseUrl: ${supabaseUrl ? 'aanwezig' : 'ONTBREEKT'}`);
+  debug.push(`supabaseServiceKey: ${supabaseServiceKey ? 'aanwezig' : 'ONTBREEKT'}`);
+  debug.push(`internalSecret: ${internalSecret ? 'aanwezig' : 'ONTBREEKT'}`);
+
   let body: {
     slug?: string;
     email?: string;
@@ -19,14 +25,18 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Ongeldige JSON body' }, { status: 400 });
+    return NextResponse.json({ error: 'Ongeldige JSON body', debug }, { status: 400 });
   }
 
   const { slug, email, password, drivingschool_id, admin_email, admin_password } = body;
 
-  // Verify admin credentials server-side — no JWT tokens needed
+  debug.push(`admin_email ontvangen: ${admin_email ? admin_email : 'ONTBREEKT'}`);
+  debug.push(`admin_password ontvangen: ${admin_password ? 'ja' : 'ONTBREEKT'}`);
+  debug.push(`slug: ${slug ?? 'ONTBREEKT'}`);
+  debug.push(`drivingschool_id: ${drivingschool_id ?? 'ONTBREEKT'}`);
+
   if (!admin_email || !admin_password) {
-    return NextResponse.json({ error: 'Admin inloggegevens ontbreken' }, { status: 401 });
+    return NextResponse.json({ error: 'Admin inloggegevens ontbreken', debug }, { status: 401 });
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -35,23 +45,29 @@ export async function POST(request: NextRequest) {
     password: admin_password,
   });
 
+  debug.push(`auth error: ${authError ? authError.message : 'geen'}`);
+  debug.push(`auth user: ${authData?.user?.email ?? 'null'}`);
+
   if (authError || !authData.user) {
-    return NextResponse.json({ error: 'Ongeldige admin inloggegevens' }, { status: 401 });
+    return NextResponse.json({
+      error: `Ongeldige admin inloggegevens: ${authError?.message ?? 'geen user'}`,
+      debug,
+    }, { status: 401 });
   }
 
   if (authData.user.email !== 'onderates86@gmail.com') {
-    return NextResponse.json({ error: 'Geen toegang' }, { status: 403 });
+    return NextResponse.json({
+      error: `Geen toegang — ingelogd als: ${authData.user.email}`,
+      debug,
+    }, { status: 403 });
   }
 
   if (!slug || !email || !password || !drivingschool_id) {
-    return NextResponse.json(
-      { error: 'slug, email, password en drivingschool_id zijn verplicht' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Plango velden ontbreken', debug }, { status: 400 });
   }
 
-  // Proxy to Supabase edge function
   const edgeFunctionUrl = `${supabaseUrl}/functions/v1/plango-migrate`;
+  debug.push(`edge function URL: ${edgeFunctionUrl}`);
 
   try {
     const res = await fetch(edgeFunctionUrl, {
@@ -64,12 +80,13 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ slug, email, password, drivingschool_id }),
     });
 
+    debug.push(`edge function status: ${res.status}`);
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json({ ...data, debug }, { status: res.status });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Onbekende fout';
     return NextResponse.json(
-      { success: false, error: `Edge function fout: ${message}`, logs: [] },
+      { success: false, error: `Edge function fout: ${message}`, debug, logs: [] },
       { status: 500 },
     );
   }
