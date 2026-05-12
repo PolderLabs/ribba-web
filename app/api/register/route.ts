@@ -91,15 +91,18 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabase();
 
-    // Check if email already registered for this school
+    // Check of email al bekend is bij deze rijschool
     const { data: existing } = await supabase
       .from('students')
-      .select('id')
+      .select('id, user_id, status')
       .eq('email', email.trim().toLowerCase())
       .eq('drivingschool_id', drivingschool_id)
       .limit(1);
 
-    if (existing && existing.length > 0) {
+    const existingStudent = existing && existing.length > 0 ? existing[0] : null;
+
+    // Als de student al een auth-account heeft (=echt geregistreerd) → blokkeren
+    if (existingStudent && existingStudent.user_id) {
       return NextResponse.json(
         { error: 'Dit e-mailadres is al aangemeld bij deze rijschool.' },
         { status: 409 },
@@ -120,8 +123,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert student with waitlist status
-    const { error: insertError } = await supabase.from('students').insert({
+    // Als er al een placeholder-student bestaat (zelfde email, geen auth_user) →
+    // verrijk die rij in plaats van een duplicaat aan te maken.
+    const studentData = {
       first_name: first_name.trim(),
       last_name: last_name.trim(),
       email: email.trim().toLowerCase(),
@@ -133,14 +137,29 @@ export async function POST(request: NextRequest) {
       date_of_birth,
       drivingschool_id,
       status: 'waitlist',
-    });
+    };
 
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      return NextResponse.json(
-        { error: 'Er ging iets mis bij het opslaan. Probeer het opnieuw.' },
-        { status: 500 },
-      );
+    if (existingStudent) {
+      const { error: updateError } = await supabase
+        .from('students')
+        .update(studentData)
+        .eq('id', existingStudent.id);
+      if (updateError) {
+        console.error('Update error:', updateError);
+        return NextResponse.json(
+          { error: 'Er ging iets mis bij het bijwerken. Probeer het opnieuw.' },
+          { status: 500 },
+        );
+      }
+    } else {
+      const { error: insertError } = await supabase.from('students').insert(studentData);
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        return NextResponse.json(
+          { error: 'Er ging iets mis bij het opslaan. Probeer het opnieuw.' },
+          { status: 500 },
+        );
+      }
     }
 
     // Send confirmation email to student
