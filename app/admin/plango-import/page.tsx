@@ -76,6 +76,7 @@ export default function PlangoImportPage() {
   async function handleMigrate(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedSchool || !plangoSlug || !plangoEmail || !plangoPassword) return;
+    if (!adminCreds) { setPhase('login'); return; } // session lost — re-login
 
     setPhase('migrating');
     setLogs(['Verbinding maken met Plango...']);
@@ -115,7 +116,9 @@ export default function PlangoImportPage() {
   }
 
   function resetForm() {
-    setPhase('form');
+    // Always go back to login so credentials are fresh
+    setPhase('login');
+    setAdminCreds(null);
     setPlangoSlug('');
     setPlangoEmail('');
     setPlangoPassword('');
