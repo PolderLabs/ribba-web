@@ -26,6 +26,7 @@ export default function PlangoImportPage() {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchool, setSelectedSchool] = useState('');
@@ -46,7 +47,7 @@ export default function PlangoImportPage() {
     e.preventDefault();
     setLoginError('');
     const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: adminEmail,
       password: adminPassword,
     });
@@ -60,7 +61,10 @@ export default function PlangoImportPage() {
       await supabase.auth.signOut();
       return;
     }
-    // Load schools
+    // Store the access token immediately — don't rely on getSession() later
+    const token = authData.session?.access_token ?? null;
+    setAccessToken(token);
+    // Load schools using the fresh token directly
     const { data } = await supabase
       .from('drivingschools')
       .select('id, name, registration_slug')
@@ -79,15 +83,11 @@ export default function PlangoImportPage() {
     setErrorMsg('');
 
     try {
-      const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
       const res = await fetch('/api/plango-import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({
           slug: plangoSlug.trim(),
