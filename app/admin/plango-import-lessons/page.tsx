@@ -14,6 +14,8 @@ type MigrationResult = {
   lessons_imported: number;
   lessons_skipped: number;
   lessons_failed: number;
+  busy_slots_imported: number;
+  busy_slots_failed: number;
   students_matched: number;
   students_unmatched: string[];
   credit_updated: number;
@@ -239,7 +241,8 @@ export default function PlangoImportLessonsPage() {
                   <strong>{selectedSchoolName}</strong>.
                 </p>
                 <p style={styles.previewWarning}>
-                  ⚠️ Examens worden NIET geïmporteerd (gaan via CBR-koppeling). Lessen worden gematcht via leerlingnaam.
+                  ⚠️ Examens worden NIET geïmporteerd (gaan via CBR-koppeling). Lessen via leerlingnaam-match.
+                  Privé-blokken vanaf vandaag → instructor agenda.
                 </p>
               </div>
             )}
@@ -276,16 +279,16 @@ export default function PlangoImportLessonsPage() {
                 <div style={styles.statLabel}>Lessen</div>
               </div>
               <div style={styles.statBox}>
+                <div style={{ ...styles.statNumber, color: '#0ea5e9' }}>{result.busy_slots_imported}</div>
+                <div style={styles.statLabel}>Privé-blokken</div>
+              </div>
+              <div style={styles.statBox}>
                 <div style={{ ...styles.statNumber, color: '#10b981' }}>{result.credit_updated}</div>
-                <div style={styles.statLabel}>Tegoed bijgewerkt</div>
+                <div style={styles.statLabel}>Tegoed</div>
               </div>
               <div style={styles.statBox}>
                 <div style={{ ...styles.statNumber, color: '#94a3b8' }}>{result.students_matched}</div>
                 <div style={styles.statLabel}>Gematcht</div>
-              </div>
-              <div style={styles.statBox}>
-                <div style={{ ...styles.statNumber, color: '#f59e0b' }}>{result.lessons_skipped}</div>
-                <div style={styles.statLabel}>Lessen skip</div>
               </div>
             </div>
 
