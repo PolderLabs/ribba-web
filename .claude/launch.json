@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "ribba-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000,
-      "cwd": "/Users/onder/Github/ribba-web"
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-c", "export PATH=/opt/homebrew/Cellar/node/24.4.1/bin:/opt/homebrew/bin:$PATH && npm run dev"],
+      "port": 3000
     }
   ]
 }

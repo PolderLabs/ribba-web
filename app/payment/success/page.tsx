@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import RibbaLogo from '../../components/RibbaLogo';
+import { APP_STORE_URL } from '@/lib/app-links';
 
 function PaymentContent() {
   const searchParams = useSearchParams();
@@ -58,7 +59,7 @@ function PaymentContent() {
 
         <p className="footer-text">
           App niet geïnstalleerd?{' '}
-          <a href="https://apps.apple.com/app/ribba/id6744055023">Download hier</a>
+          <a href={APP_STORE_URL}>Download hier</a>
         </p>
       </div>
     </main>

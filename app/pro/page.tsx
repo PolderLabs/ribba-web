@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
+import { APP_STORE_URL } from '@/lib/app-links';
 
 export const metadata: Metadata = {
   title: 'Ribba – Rijschool Planner',
@@ -140,7 +141,7 @@ export default function ProPage() {
               }}>
                 Eerste maand gratis
               </Link>
-              <a href="https://apps.apple.com/app/ribba/id6739950062"
+              <a href={APP_STORE_URL}
                 target="_blank" rel="noopener noreferrer"
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -451,7 +452,7 @@ export default function ProPage() {
             }}>
               Gratis registreren
             </Link>
-            <a href="https://apps.apple.com/app/ribba/id6739950062"
+            <a href={APP_STORE_URL}
               target="_blank" rel="noopener noreferrer"
               className="store-badge"
               style={{ borderRadius: 14, marginTop: 0, fontSize: 15 }}>
