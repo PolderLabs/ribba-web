@@ -24,10 +24,12 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
- * Dutch phone number validation (06-xxxxxxxx or +316xxxxxxxx)
+ * Dutch phone number validation (06-xxxxxxxx or +316xxxxxxxx).
+ * Strip alles behalve digits en '+' — vangt ook hidden unicode-tekens
+ * (NBSP, LTR-mark, etc.) die mobile keyboards soms invoegen bij paste.
  */
 export function isValidPhone(phone: string): boolean {
-  const cleaned = phone.replace(/[\s\-()]/g, '');
+  const cleaned = phone.replace(/[^\d+]/g, '');
   return /^(06\d{8}|\+316\d{8}|00316\d{8})$/.test(cleaned);
 }
 
