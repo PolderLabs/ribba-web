@@ -34,6 +34,26 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
+ * Internationale telefoonnummervalidatie. Accepteert nummers uit alle landen,
+ * niet alleen Nederlandse. Bedoeld voor leerlingen die zich bij een rijschool
+ * inschrijven met een buitenlands nummer (bijv. een Duits +49-nummer).
+ *
+ * Geaccepteerd:
+ *  - E.164-formaat: '+' gevolgd door 8-15 cijfers (00-prefix wordt genormaliseerd naar '+')
+ *  - Lokaal nummer zonder landcode: begint met '0', 9-12 cijfers (bijv. NL '0612345678')
+ */
+export function isValidInternationalPhone(phone: string): boolean {
+  let cleaned = phone.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('00')) {
+    cleaned = '+' + cleaned.slice(2);
+  }
+  if (cleaned.startsWith('+')) {
+    return /^\+\d{8,15}$/.test(cleaned);
+  }
+  return /^0\d{8,11}$/.test(cleaned);
+}
+
+/**
  * KVK number validation: exactly 8 digits
  */
 export function isValidKVK(kvk: string): boolean {
