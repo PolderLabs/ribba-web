@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { isValidEmail, isValidPhone, isMinimumAge } from '@/utils/validation';
+import { isValidEmail, isValidInternationalPhone, isMinimumAge } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Ongeldig e-mailadres.' }, { status: 400 });
     }
-    if (!isValidPhone(phone)) {
+    if (!isValidInternationalPhone(phone)) {
       return NextResponse.json({ error: 'Ongeldig telefoonnummer.' }, { status: 400 });
     }
     if (!isValidPostalCode(postal_code)) {

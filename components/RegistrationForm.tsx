@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
-import { isMinimumAge, isValidEmail, isValidPhone } from '@/utils/validation';
+import { isMinimumAge, isValidEmail, isValidInternationalPhone } from '@/utils/validation';
 
 type Props = {
   schoolId: string;
@@ -62,8 +62,8 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
 
     if (!form.phone.trim()) {
       e.phone = 'Telefoonnummer is verplicht';
-    } else if (!isValidPhone(form.phone)) {
-      e.phone = 'Ongeldig telefoonnummer (bijv. 0612345678)';
+    } else if (!isValidInternationalPhone(form.phone)) {
+      e.phone = 'Ongeldig telefoonnummer (bijv. 0612345678 of +49123456789)';
     }
 
     if (!form.address.trim()) e.address = 'Adres is verplicht';
@@ -196,7 +196,7 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
           <input
             id="phone"
             type="tel"
-            placeholder="0612345678"
+            placeholder="0612345678 of +49 151 23456789"
             className={errors.phone ? 'error' : ''}
             value={form.phone}
             onChange={(e) => handleChange('phone', e.target.value)}
