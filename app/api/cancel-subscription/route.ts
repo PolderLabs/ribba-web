@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { sendAdminNotification } from '@/lib/admin-notifications';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -79,6 +80,26 @@ export async function POST(request: NextRequest) {
         external_subscription_id: null,
       })
       .eq('id', license.id);
+
+    // Admin notification — fire-and-forget
+    try {
+      const { data: schoolRow } = await supabase
+        .from('drivingschools')
+        .select('name, email, city')
+        .eq('id', school_id)
+        .maybeSingle();
+      if (schoolRow) {
+        sendAdminNotification('subscription_cancelled', {
+          id: school_id,
+          name: schoolRow.name,
+          email: schoolRow.email,
+          city: schoolRow.city,
+          billing_plan: license.billing_plan,
+        }).catch((e) => console.error('Admin notify (subscription_cancelled) failed:', e));
+      }
+    } catch (e) {
+      console.error('Admin notify lookup failed:', e);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

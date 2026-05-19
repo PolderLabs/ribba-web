@@ -4,6 +4,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
+import { sendAdminNotification } from '@/lib/admin-notifications';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -259,6 +260,15 @@ export async function POST(request: NextRequest) {
       console.error('Invite link insert error:', inviteLinkError);
       // Non-fatal: continue anyway
     }
+
+    // 6b. Admin notification — fire-and-forget, blokkeert flow niet
+    sendAdminNotification('school_registered', {
+      id: school.id,
+      name: school_name.trim(),
+      email: emailLower,
+      city: city.trim(),
+      billing_plan: 'trial',
+    }).catch((e) => console.error('Admin notify (school_registered) failed:', e));
 
     // 7. Send branded confirmation email — user MUST click the link to
     //    verify their email address before they can log in.
