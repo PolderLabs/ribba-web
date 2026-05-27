@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import {
+  sendRecurringPaymentFailedMail,
+  sendSubscriptionSuspendedMail,
+} from '@/lib/school-emails';
+
+const FAILED_PAYMENT_LIMIT = 3;
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -91,12 +97,43 @@ export async function POST(request: NextRequest) {
               price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '45'),
               period_end: startDate.toISOString(),
               cancelled_at: null,
+              failed_payment_count: 0,
+              last_failed_payment_at: null,
             })
             .eq('id', license?.id);
 
           console.log(`Subscription ${subscription.id} created for school ${school_id}, starts ${startDateStr}`);
         } catch (subError) {
+          // Eerste betaling is gelukt, maar subscription aanmaken mislukte.
+          // Admin notify + return 500 zodat Mollie de webhook retried.
+          // Fallback: nightly reconciliation cron probeert het ook nog.
           console.error('Failed to create subscription:', subError);
+
+          try {
+            const { data: schoolRow } = await getSupabase()
+              .from('drivingschools')
+              .select('name, email, city')
+              .eq('id', school_id)
+              .maybeSingle();
+            if (schoolRow) {
+              await sendAdminNotification('subscription_creation_failed', {
+                id: school_id,
+                name: schoolRow.name,
+                email: schoolRow.email,
+                city: schoolRow.city,
+                billing_plan: plan,
+                extra: {
+                  payment_id: paymentId,
+                  mollie_customer_id: customerId,
+                  error: String(subError).slice(0, 500),
+                },
+              });
+            }
+          } catch (notifyErr) {
+            console.error('Admin notify (subscription_creation_failed) failed:', notifyErr);
+          }
+
+          return NextResponse.json({ status: 'retry' }, { status: 500 });
         }
       } else if (license) {
         // Subscription creation failed — still update the plan
@@ -131,24 +168,115 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle recurring payments — extend period_end by 1 month
+    // Handle recurring payments — extend period_end by 1 month + reset failure counter
     if (payment.status === 'paid' && type === 'recurring') {
       const newPeriodEnd = new Date();
       newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
 
       await getSupabase()
         .from('instructor_licenses')
-        .update({ period_end: newPeriodEnd.toISOString() })
+        .update({
+          period_end: newPeriodEnd.toISOString(),
+          failed_payment_count: 0,
+          last_failed_payment_at: null,
+        })
         .eq('school_id', school_id)
         .eq('status', 'active');
 
       console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
     }
 
-    // Handle failed recurring payment
+    // Handle failed recurring payment — escalatieladder:
+    //   poging 1/2/3: mail rijschool ("controleer saldo, we proberen opnieuw")
+    //   poging >= 3 : cancel subscription bij Mollie + admin notify + opzeg-mail naar rijschool
     if (payment.status === 'failed' && type === 'recurring') {
       console.warn(`Recurring payment FAILED for school ${school_id}`);
-      // Optionally downgrade after X failed attempts
+
+      const { data: license } = await getSupabase()
+        .from('instructor_licenses')
+        .select('id, failed_payment_count, mollie_customer_id, external_subscription_id')
+        .eq('school_id', school_id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (license) {
+        const newCount = (license.failed_payment_count ?? 0) + 1;
+
+        await getSupabase()
+          .from('instructor_licenses')
+          .update({
+            failed_payment_count: newCount,
+            last_failed_payment_at: new Date().toISOString(),
+          })
+          .eq('id', license.id);
+
+        const { data: schoolRow } = await getSupabase()
+          .from('drivingschools')
+          .select('name, email, city')
+          .eq('id', school_id)
+          .maybeSingle();
+
+        if (newCount >= FAILED_PAYMENT_LIMIT) {
+          // Cancel de Mollie subscription
+          if (license.external_subscription_id && license.mollie_customer_id) {
+            try {
+              await getMollie().customerSubscriptions.cancel(
+                license.external_subscription_id,
+                { customerId: license.mollie_customer_id },
+              );
+            } catch (cancelErr) {
+              console.error('Could not cancel Mollie subscription after failures:', cancelErr);
+            }
+          }
+
+          // Markeer license als opgeschort: terug naar trial, behoud customer-id voor reactivatie
+          await getSupabase()
+            .from('instructor_licenses')
+            .update({
+              billing_plan: 'trial',
+              is_trial: true,
+              external_subscription_id: null,
+              cancelled_at: new Date().toISOString(),
+            })
+            .eq('id', license.id);
+
+          if (schoolRow?.email) {
+            await sendSubscriptionSuspendedMail(schoolRow.email, schoolRow.name).catch((e) =>
+              console.error('School suspended mail failed:', e),
+            );
+          }
+
+          if (schoolRow) {
+            await sendAdminNotification('subscription_suspended', {
+              id: school_id,
+              name: schoolRow.name,
+              email: schoolRow.email,
+              city: schoolRow.city,
+              extra: { failed_payment_count: newCount, payment_id: paymentId },
+            }).catch((e) => console.error('Admin notify (subscription_suspended) failed:', e));
+          }
+        } else {
+          if (schoolRow?.email) {
+            await sendRecurringPaymentFailedMail(
+              schoolRow.email,
+              schoolRow.name,
+              newCount,
+            ).catch((e) => console.error('School payment-failed mail failed:', e));
+          }
+
+          if (schoolRow) {
+            await sendAdminNotification('recurring_payment_failed', {
+              id: school_id,
+              name: schoolRow.name,
+              email: schoolRow.email,
+              city: schoolRow.city,
+              extra: { attempt: newCount, payment_id: paymentId },
+            }).catch((e) => console.error('Admin notify (recurring_payment_failed) failed:', e));
+          }
+        }
+      }
     }
 
     return NextResponse.json({ status: 'ok' });

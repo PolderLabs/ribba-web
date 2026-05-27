@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/trial-reminder",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-subscriptions",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
