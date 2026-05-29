@@ -12,7 +12,10 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export type AdminEventType =
   | 'school_registered'
   | 'subscription_activated'
-  | 'subscription_cancelled';
+  | 'subscription_cancelled'
+  | 'subscription_creation_failed'
+  | 'recurring_payment_failed'
+  | 'subscription_suspended';
 
 interface SchoolInfo {
   id?: string;
@@ -20,6 +23,8 @@ interface SchoolInfo {
   email?: string | null;
   city?: string | null;
   billing_plan?: string | null;
+  // Extra context for failure-events (paymentId, attempt count, error message, etc.)
+  extra?: Record<string, string | number | null | undefined>;
 }
 
 function escapeHtml(s: string): string {
@@ -72,6 +77,12 @@ function eventLabel(type: AdminEventType): { emoji: string; subject: string; tit
       return { emoji: '💰', subject: 'Abonnement geactiveerd', title: 'Abonnement geactiveerd', color: '#0d9488' };
     case 'subscription_cancelled':
       return { emoji: '⚠️', subject: 'Abonnement opgezegd', title: 'Abonnement opgezegd', color: '#f59e0b' };
+    case 'subscription_creation_failed':
+      return { emoji: '🚨', subject: 'Subscription aanmaken MISLUKT — handmatig ingrijpen nodig', title: 'Subscription aanmaken mislukt', color: '#dc2626' };
+    case 'recurring_payment_failed':
+      return { emoji: '⚠️', subject: 'Recurring SEPA-incasso mislukt', title: 'SEPA-incasso mislukt', color: '#ea580c' };
+    case 'subscription_suspended':
+      return { emoji: '🛑', subject: 'Abonnement opgeschort na meerdere mislukte incassos', title: 'Abonnement opgeschort', color: '#7f1d1d' };
   }
 }
 
@@ -98,6 +109,15 @@ function buildHtml(type: AdminEventType, school: SchoolInfo, stats: Awaited<Retu
           ${school.email ? `<tr><td style="padding:4px 0"><strong>E-mail:</strong> ${escapeHtml(school.email)}</td></tr>` : ''}
           ${school.city ? `<tr><td style="padding:4px 0"><strong>Plaats:</strong> ${escapeHtml(school.city)}</td></tr>` : ''}
           ${school.billing_plan ? `<tr><td style="padding:4px 0"><strong>Plan:</strong> ${escapeHtml(planLabel)}</td></tr>` : ''}
+          ${school.extra
+            ? Object.entries(school.extra)
+                .filter(([, v]) => v !== undefined && v !== null && v !== '')
+                .map(
+                  ([k, v]) =>
+                    `<tr><td style="padding:4px 0"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(v))}</td></tr>`,
+                )
+                .join('')
+            : ''}
         </table>
       </td></tr>
       <tr><td style="padding:8px 28px 24px 28px">
