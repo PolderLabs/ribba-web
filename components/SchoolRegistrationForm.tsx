@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
 import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
+import { LEGAL_VERSIONS } from '@/lib/legal-versions';
 
 type FormData = {
   school_name: string;
@@ -19,6 +20,8 @@ type FormData = {
   password: string;
   password_confirm: string;
   terms_accepted: boolean;
+  privacy_accepted: boolean;
+  dpa_accepted: boolean;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -38,6 +41,8 @@ export default function SchoolRegistrationForm() {
     password: '',
     password_confirm: '',
     terms_accepted: false,
+    privacy_accepted: false,
+    dpa_accepted: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -96,7 +101,13 @@ export default function SchoolRegistrationForm() {
     }
 
     if (!form.terms_accepted) {
-      e.terms_accepted = 'Je moet akkoord gaan met de voorwaarden';
+      e.terms_accepted = 'Je moet akkoord gaan met de Algemene Voorwaarden';
+    }
+    if (!form.privacy_accepted) {
+      e.privacy_accepted = 'Je moet de Privacyverklaring bevestigen';
+    }
+    if (!form.dpa_accepted) {
+      e.dpa_accepted = 'Je moet akkoord gaan met de Verwerkersovereenkomst';
     }
 
     return e;
@@ -113,13 +124,23 @@ export default function SchoolRegistrationForm() {
     setSubmitting(true);
 
     try {
-      const { terms_accepted: _, ...formData } = form;
+      const {
+        terms_accepted: _terms,
+        privacy_accepted: _privacy,
+        dpa_accepted: _dpa,
+        ...formData
+      } = form;
       const res = await fetch('/api/register-school', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
           postal_code: normalizePostalCode(form.postal_code),
+          legal_acceptances: {
+            terms: LEGAL_VERSIONS.terms,
+            privacy: LEGAL_VERSIONS.privacy,
+            dpa: LEGAL_VERSIONS.dpa,
+          },
         }),
       });
 
@@ -339,36 +360,93 @@ export default function SchoolRegistrationForm() {
         </div>
       </div>
 
-      {/* Voorwaarden */}
-      <div className="form-group full-width" style={{ marginTop: 8 }}>
-        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
-          <input
-            type="checkbox"
-            checked={form.terms_accepted}
-            onChange={(e) => {
-              setForm((prev) => ({ ...prev, terms_accepted: e.target.checked }));
-              if (errors.terms_accepted) {
-                setErrors((prev) => {
-                  const next = { ...prev };
-                  delete next.terms_accepted;
-                  return next;
-                });
-              }
-            }}
-            style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
-          />
-          <span>
-            Ik ga akkoord met de{' '}
-            <a href="/voorwaarden" target="_blank" style={{ color: '#2563EB', fontWeight: 600 }}>
-              Algemene Voorwaarden
-            </a>{' '}
-            en de{' '}
-            <a href="/privacy" target="_blank" style={{ color: '#2563EB', fontWeight: 600 }}>
-              Privacyverklaring
-            </a>
-          </span>
-        </label>
-        {errors.terms_accepted && <p className="form-error">{errors.terms_accepted}</p>}
+      {/* Legal acceptances — 3 aparte checkboxes voor juridische traceerbaarheid */}
+      <div className="form-group full-width" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Algemene Voorwaarden */}
+        <div>
+          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={form.terms_accepted}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, terms_accepted: e.target.checked }));
+                if (errors.terms_accepted) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.terms_accepted;
+                    return next;
+                  });
+                }
+              }}
+              style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+            />
+            <span>
+              Ik ga akkoord met de{' '}
+              <a href="/voorwaarden" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+                Algemene Voorwaarden
+              </a>
+            </span>
+          </label>
+          {errors.terms_accepted && <p className="form-error">{errors.terms_accepted}</p>}
+        </div>
+
+        {/* Privacyverklaring */}
+        <div>
+          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={form.privacy_accepted}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, privacy_accepted: e.target.checked }));
+                if (errors.privacy_accepted) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.privacy_accepted;
+                    return next;
+                  });
+                }
+              }}
+              style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+            />
+            <span>
+              Ik heb de{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+                Privacyverklaring
+              </a>{' '}
+              gelezen
+            </span>
+          </label>
+          {errors.privacy_accepted && <p className="form-error">{errors.privacy_accepted}</p>}
+        </div>
+
+        {/* Verwerkersovereenkomst (DPA) */}
+        <div>
+          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={form.dpa_accepted}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, dpa_accepted: e.target.checked }));
+                if (errors.dpa_accepted) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.dpa_accepted;
+                    return next;
+                  });
+                }
+              }}
+              style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+            />
+            <span>
+              Ik ga akkoord met de{' '}
+              <a href="/verwerkersovereenkomst" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+                Verwerkersovereenkomst
+              </a>{' '}
+              tussen Ribba en mijn rijschool
+            </span>
+          </label>
+          {errors.dpa_accepted && <p className="form-error">{errors.dpa_accepted}</p>}
+        </div>
       </div>
 
       {serverError && (

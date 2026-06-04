@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
 import { isMinimumAge, isValidEmail, isValidInternationalPhone } from '@/utils/validation';
+import { LEGAL_VERSIONS } from '@/lib/legal-versions';
 
 type Props = {
   schoolId: string;
@@ -27,6 +28,8 @@ type FormData = {
   city: string;
   license_type: string;
   date_of_birth: string;
+  terms_accepted: boolean;
+  privacy_accepted: boolean;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
@@ -42,6 +45,8 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
     city: '',
     license_type: 'B',
     date_of_birth: '',
+    terms_accepted: false,
+    privacy_accepted: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +89,13 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
       e.date_of_birth = 'Je moet minimaal 16 jaar oud zijn';
     }
 
+    if (!form.terms_accepted) {
+      e.terms_accepted = 'Je moet akkoord gaan met de Algemene Voorwaarden';
+    }
+    if (!form.privacy_accepted) {
+      e.privacy_accepted = 'Je moet de Privacyverklaring bevestigen';
+    }
+
     return e;
   }
 
@@ -98,13 +110,22 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
     setSubmitting(true);
 
     try {
+      const {
+        terms_accepted: _terms,
+        privacy_accepted: _privacy,
+        ...formData
+      } = form;
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          ...formData,
           postal_code: normalizePostalCode(form.postal_code),
           drivingschool_id: schoolId,
+          legal_acceptances: {
+            terms: LEGAL_VERSIONS.terms,
+            privacy: LEGAL_VERSIONS.privacy,
+          },
         }),
       });
 
@@ -275,6 +296,66 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
             onChange={(e) => handleChange('date_of_birth', e.target.value)}
           />
           {errors.date_of_birth && <p className="form-error">{errors.date_of_birth}</p>}
+        </div>
+      </div>
+
+      {/* Legal acceptances — 2 aparte checkboxes voor juridische traceerbaarheid */}
+      <div className="form-group full-width" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Algemene Voorwaarden */}
+        <div>
+          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={form.terms_accepted}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, terms_accepted: e.target.checked }));
+                if (errors.terms_accepted) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.terms_accepted;
+                    return next;
+                  });
+                }
+              }}
+              style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+            />
+            <span>
+              Ik ga akkoord met de{' '}
+              <a href="/voorwaarden" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+                Algemene Voorwaarden
+              </a>
+            </span>
+          </label>
+          {errors.terms_accepted && <p className="form-error">{errors.terms_accepted}</p>}
+        </div>
+
+        {/* Privacyverklaring */}
+        <div>
+          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 14, color: '#44403C', lineHeight: 1.5 }}>
+            <input
+              type="checkbox"
+              checked={form.privacy_accepted}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, privacy_accepted: e.target.checked }));
+                if (errors.privacy_accepted) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.privacy_accepted;
+                    return next;
+                  });
+                }
+              }}
+              style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+            />
+            <span>
+              Ik heb de{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+                Privacyverklaring
+              </a>{' '}
+              gelezen
+            </span>
+          </label>
+          {errors.privacy_accepted && <p className="form-error">{errors.privacy_accepted}</p>}
         </div>
       </div>
 

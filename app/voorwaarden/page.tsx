@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import RibbaLogo from "../components/RibbaLogo";
+import { LEGAL_VERSIONS } from "@/lib/legal-versions";
 
 export const metadata: Metadata = {
   title: "Algemene Voorwaarden | Ribba Rijschool Planner",
@@ -98,7 +99,7 @@ export default function VoorwaardenPage() {
       </Link>
 
       <h1 style={styles.h1}>Algemene Voorwaarden — Ribba Rijschool Planner</h1>
-      <p style={styles.updated}>Laatst bijgewerkt: april 2026</p>
+      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.terms} · Laatst bijgewerkt: april 2026</p>
       <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
         Deze voorwaarden gelden voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
         Voor de voorwaarden van de Ribba vergelijkingssite, zie{' '}

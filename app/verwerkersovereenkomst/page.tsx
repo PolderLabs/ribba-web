@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import RibbaLogo from "../components/RibbaLogo";
+import { LEGAL_VERSIONS } from "@/lib/legal-versions";
 
 export const metadata: Metadata = {
   title: "Verwerkersovereenkomst | Ribba Rijschool Planner",
@@ -104,7 +105,7 @@ export default function VerwerkersovereenkomstPage() {
       </Link>
 
       <h1 style={styles.h1}>Verwerkersovereenkomst — Ribba Rijschool Planner</h1>
-      <p style={styles.updated}>Laatst bijgewerkt: april 2026</p>
+      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.dpa} · Laatst bijgewerkt: april 2026</p>
       <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
         Deze verwerkersovereenkomst geldt voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
       </div>

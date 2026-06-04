@@ -5,6 +5,12 @@ import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import {
+  recordLegalAcceptances,
+  pickAcceptedVersions,
+  extractIpAddress,
+  extractUserAgent,
+} from '@/lib/legal-acceptances';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -77,6 +83,7 @@ export async function POST(request: NextRequest) {
       kvk_number,
       btw_number,
       password,
+      legal_acceptances: clientLegalVersions,
     } = body;
 
     // Server-side validation
@@ -105,6 +112,15 @@ export async function POST(request: NextRequest) {
     }
     if (!isValidKVK(kvk_number)) {
       return NextResponse.json({ error: 'Ongeldig KVK-nummer (8 cijfers).' }, { status: 400 });
+    }
+
+    // Valideer dat alle 3 legal acceptances zijn meegestuurd met de juiste versie
+    const acceptedDocs = pickAcceptedVersions(clientLegalVersions, ['terms', 'privacy', 'dpa']);
+    if (acceptedDocs.length !== 3) {
+      return NextResponse.json(
+        { error: 'Je moet akkoord gaan met de Algemene Voorwaarden, Privacyverklaring en Verwerkersovereenkomst.' },
+        { status: 400 },
+      );
     }
 
     const emailLower = email.trim().toLowerCase();
@@ -242,6 +258,19 @@ export async function POST(request: NextRequest) {
       console.error('License insert error:', licenseError);
       // Non-fatal: continue anyway, license can be added manually
     }
+
+    // 5b. Log legal acceptances (append-only audit log)
+    await recordLegalAcceptances(
+      supabase,
+      acceptedDocs.map((doc) => ({
+        user_id: authUserId!,
+        school_id: school.id,
+        document_type: doc.document_type,
+        document_version: doc.document_version,
+        ip_address: extractIpAddress(request),
+        user_agent: extractUserAgent(request),
+      })),
+    );
 
     // 6. Create multi-use invitation link for the school
     const { error: inviteLinkError } = await supabase
