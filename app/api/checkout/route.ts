@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMollieClient, SequenceType } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -78,9 +79,12 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    // Prevent downgrade via checkout (must meet limits first)
-    if (license?.billing_plan === 'premium' && plan === 'basic') {
-      // Count active students for this school
+    // Basic-limietcheck: ALTIJD uitvoeren bij keuze voor Basic, niet alleen
+    // bij downgrade van Premium. Voorkomt dat een school met >30 leerlingen of
+    // >1 instructeur (vanuit trial/expired/nieuw) alsnog Basic kan afsluiten.
+    // Zie handoff: docs/handoff/abonnement-leerling-limiet-billing.md in ribbaPro.
+    if (plan === 'basic') {
+      // Tel vlak vóór checkout (geen gecachte waarde), zoals de handoff vraagt.
       const { count: studentCount } = await getSupabase()
         .from('students')
         .select('id', { count: 'exact', head: true })
@@ -93,15 +97,28 @@ export async function POST(request: NextRequest) {
         .eq('drivingschool_id', school_id)
         .eq('status', 'active');
 
-      if ((studentCount ?? 0) > 30) {
+      const activeStudents = studentCount ?? 0;
+      const activeInstructors = instructorCount ?? 0;
+
+      if (activeStudents > BASIC_MAX_STUDENTS) {
         return NextResponse.json(
-          { error: `Je hebt ${studentCount} actieve leerlingen. Verlaag dit naar maximaal 30 om naar Basic te kunnen wisselen.` },
+          {
+            error: `Je rijschool heeft ${activeStudents} actieve leerlingen (max ${BASIC_MAX_STUDENTS} voor Basic). Kies Premium, of archiveer leerlingen tot ${BASIC_MAX_STUDENTS} en probeer opnieuw.`,
+            reason: 'basic_student_limit_exceeded',
+            active_students: activeStudents,
+            limit: BASIC_MAX_STUDENTS,
+          },
           { status: 400 },
         );
       }
-      if ((instructorCount ?? 0) > 1) {
+      if (activeInstructors > BASIC_MAX_INSTRUCTORS) {
         return NextResponse.json(
-          { error: `Je hebt ${instructorCount} actieve instructeurs. Basic ondersteunt maximaal 1 instructeur.` },
+          {
+            error: `Je rijschool heeft ${activeInstructors} actieve instructeurs (max ${BASIC_MAX_INSTRUCTORS} voor Basic). Kies Premium om met meerdere instructeurs te werken.`,
+            reason: 'basic_instructor_limit_exceeded',
+            active_instructors: activeInstructors,
+            limit: BASIC_MAX_INSTRUCTORS,
+          },
           { status: 400 },
         );
       }
