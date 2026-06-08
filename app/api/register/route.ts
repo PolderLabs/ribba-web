@@ -3,11 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { isValidEmail, isValidInternationalPhone, isMinimumAge } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
-import {
-  pickAcceptedVersions,
-  extractIpAddress,
-  extractUserAgent,
-} from '@/lib/legal-acceptances';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -67,7 +62,6 @@ export async function POST(request: NextRequest) {
       license_type,
       date_of_birth,
       drivingschool_id,
-      legal_acceptances: clientLegalVersions,
     } = body;
 
     // Server-side validation
@@ -95,19 +89,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ongeldig rijbewijstype.' }, { status: 400 });
     }
 
-    // Valideer dat zowel terms als privacy zijn geaccepteerd (geen DPA voor leerlingen)
-    const acceptedDocs = pickAcceptedVersions(clientLegalVersions, ['terms', 'privacy']);
-    if (acceptedDocs.length !== 2) {
-      return NextResponse.json(
-        { error: 'Je moet akkoord gaan met de Algemene Voorwaarden en Privacyverklaring.' },
-        { status: 400 },
-      );
-    }
-    const termsVersion = acceptedDocs.find((d) => d.document_type === 'terms')!.document_version;
-    const privacyVersion = acceptedDocs.find((d) => d.document_type === 'privacy')!.document_version;
-    const nowIso = new Date().toISOString();
-    const legalIp = extractIpAddress(request);
-    const legalUa = extractUserAgent(request);
+    // NB: geen juridische consent hier — die wordt door de Ribba app afgedwongen
+    // bij de eerste login van de leerling (blokkerende modal met per-school
+    // documenten). Zie docs/handoff/leerling-voorwaarden-registratie.md in ribbaPro.
 
     const supabase = getSupabase();
 
@@ -157,12 +141,6 @@ export async function POST(request: NextRequest) {
       date_of_birth,
       drivingschool_id,
       status: 'waitlist',
-      terms_version: termsVersion,
-      terms_accepted_at: nowIso,
-      privacy_version: privacyVersion,
-      privacy_accepted_at: nowIso,
-      legal_ip_address: legalIp,
-      legal_user_agent: legalUa,
     };
 
     if (existingStudent) {
