@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function TermsRedirect() {
-  redirect("/voorwaarden");
+  redirect("https://ribba.app/voorwaarden");
 }

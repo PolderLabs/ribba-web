@@ -480,9 +480,9 @@ export default function ProPage() {
           </a>
         </p>
         <p className="footer-text" style={{ marginTop: 8 }}>
-          <Link href="/voorwaarden" style={{ color: '#A8A29E', textDecoration: 'none' }}>Algemene voorwaarden</Link>
+          <a href="https://ribba.app/voorwaarden" style={{ color: '#A8A29E', textDecoration: 'none' }}>Algemene voorwaarden</a>
           {' · '}
-          <Link href="/privacy" style={{ color: '#A8A29E', textDecoration: 'none' }}>Privacybeleid</Link>
+          <a href="https://ribba.app/privacybeleid" style={{ color: '#A8A29E', textDecoration: 'none' }}>Privacybeleid</a>
         </p>
       </footer>
     </div>

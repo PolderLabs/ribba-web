@@ -10,10 +10,7 @@ const PLANNER_ROUTES = [
   '/upgrade',
   '/registreren',
   '/rijschool-planner',
-  '/voorwaarden',
-  '/privacy',
   '/verwerkersovereenkomst',
-  '/terms',
   '/payment',
   '/reset',
   '/join',
@@ -36,10 +33,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  // On link.ribba.app: route root → /pro (landing page)
-  if (isAppSubdomain && pathname === '/') {
-    return NextResponse.rewrite(new URL('/pro', request.url));
-  }
+  // Root path on link.ribba.app is handled by app/page.tsx so we can inspect
+  // the URL hash (e.g. Supabase auth-reset tokens) before redirecting away.
 }
 
 export const config = {

@@ -203,12 +203,12 @@ export default function RijschoolPlannerPage() {
           </a>
         </p>
         <p>
-          <Link href="/voorwaarden" style={{ color: '#64748B', marginRight: 12 }}>
+          <a href="https://ribba.app/voorwaarden" style={{ color: '#64748B', marginRight: 12 }}>
             Voorwaarden
-          </Link>
-          <Link href="/privacy" style={{ color: '#64748B' }}>
+          </a>
+          <a href="https://ribba.app/privacybeleid" style={{ color: '#64748B' }}>
             Privacy
-          </Link>
+          </a>
         </p>
       </footer>
     </main>
