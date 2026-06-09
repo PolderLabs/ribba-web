@@ -54,6 +54,9 @@ function UpgradeContent() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [schoolName, setSchoolName] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
@@ -65,23 +68,29 @@ function UpgradeContent() {
       }
       const token = data.session.access_token;
       setAccessToken(token);
+      setUserEmail(data.session.user.email ?? null);
 
-      // Resolve school_id: URL > /api/me lookup
-      let resolvedSchoolId = schoolIdFromUrl;
-      if (!resolvedSchoolId) {
-        try {
-          const meRes = await fetch('/api/me', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!meRes.ok) {
-            setError('Geen rijschool gekoppeld aan dit account.');
-            setPlanLoading(false);
-            return;
-          }
+      // Resolve school_id + school_name via /api/me lookup
+      // (ook als school_id uit URL komt — dan halen we alleen de naam op)
+      let resolvedSchoolId: string | null = schoolIdFromUrl;
+      try {
+        const meRes = await fetch('/api/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (meRes.ok) {
           const me = await meRes.json();
-          resolvedSchoolId = me.school_id;
-          setSchoolId(resolvedSchoolId);
-        } catch {
+          if (me.school_name) setSchoolName(me.school_name);
+          if (!resolvedSchoolId && me.school_id) {
+            resolvedSchoolId = me.school_id;
+            setSchoolId(me.school_id);
+          }
+        } else if (!resolvedSchoolId) {
+          setError('Geen rijschool gekoppeld aan dit account.');
+          setPlanLoading(false);
+          return;
+        }
+      } catch {
+        if (!resolvedSchoolId) {
           setError('Kan geen verbinding maken met de server.');
           setPlanLoading(false);
           return;
@@ -114,6 +123,17 @@ function UpgradeContent() {
       }
     });
   }, [schoolIdFromUrl, router]);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      const supabase = getSupabaseBrowser();
+      await supabase.auth.signOut();
+    } catch {
+      // ignore — we sturen toch door
+    }
+    router.replace('/login');
+  };
 
   const handleCheckout = async (plan: 'basic' | 'premium') => {
     if (!schoolId) {
@@ -223,6 +243,50 @@ function UpgradeContent() {
   return (
     <main className="upgrade-page">
       <div className="upgrade-container">
+        {/* Account-bar: toont wie ingelogd is + uitloggen */}
+        {userEmail && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: 12,
+              fontSize: 13,
+              color: '#57534E',
+              marginBottom: 24,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              Ingelogd als{' '}
+              <strong style={{ color: '#1C1917' }}>{userEmail}</strong>
+              {schoolName && (
+                <>
+                  {' '}· <strong style={{ color: '#1C1917' }}>{schoolName}</strong>
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#2563EB',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: signingOut ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+                padding: 0,
+                opacity: signingOut ? 0.5 : 1,
+              }}
+            >
+              {signingOut ? 'Uitloggen…' : 'Uitloggen'}
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div className="logo"><RibbaLogo height={36} /></div>
