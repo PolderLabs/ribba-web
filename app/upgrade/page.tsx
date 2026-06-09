@@ -228,9 +228,17 @@ function UpgradeContent() {
           <div className="logo"><RibbaLogo height={36} /></div>
           <h1 style={{ fontSize: 36, marginBottom: 8 }}>{headerTitle}</h1>
           <p className="subtitle">
-            {planLoading ? 'Laden...' : headerSubtitle}
+            {planLoading ? 'Even kijken of je bent ingelogd…' : headerSubtitle}
           </p>
         </div>
+
+        {/* Tijdens auth-check / session lookup: alleen spinner — geen plan-kaarten,
+            zodat we geen flash van content tonen voordat we redirecten naar /login. */}
+        {planLoading && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+            <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3 }} />
+          </div>
+        )}
 
         {/* Trial-banner: tijdens proefperiode heeft de school feitelijk Premium-toegang */}
         {isTrial && !planLoading && (
@@ -287,7 +295,9 @@ function UpgradeContent() {
           </div>
         )}
 
-        {/* Plan Cards */}
+        {/* Plan Cards — alleen tonen nadat session-check + plan-fetch klaar zijn */}
+        {!planLoading && (
+        <>
         <div className="plans-grid">
           {/* Basic Plan */}
           <div className={`plan-card${isCurrentPlan('basic') ? ' plan-card-current' : ''}`}>
@@ -373,9 +383,11 @@ function UpgradeContent() {
             )}
           </div>
         </div>
+        </>
+        )}
 
         {/* Cancel subscription */}
-        {currentPlan && !isTrial && !cancelledAt && !cancelSuccess && (
+        {!planLoading && currentPlan && !isTrial && !cancelledAt && !cancelSuccess && (
           <div style={{ textAlign: 'center', marginTop: 32 }}>
             <button
               onClick={handleCancel}
