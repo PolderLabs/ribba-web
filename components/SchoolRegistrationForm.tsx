@@ -382,7 +382,7 @@ export default function SchoolRegistrationForm() {
             />
             <span>
               Ik ga akkoord met de{' '}
-              <a href="/voorwaarden" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+              <a href="https://ribba.app/voorwaarden" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
                 Algemene Voorwaarden
               </a>
             </span>
@@ -410,7 +410,7 @@ export default function SchoolRegistrationForm() {
             />
             <span>
               Ik heb de{' '}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
+              <a href="https://ribba.app/privacybeleid" target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', fontWeight: 600 }}>
                 Privacyverklaring
               </a>{' '}
               gelezen
