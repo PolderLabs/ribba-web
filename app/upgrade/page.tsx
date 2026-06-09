@@ -47,6 +47,7 @@ function UpgradeContent() {
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [isTrial, setIsTrial] = useState(false);
+  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [cancelledAt, setCancelledAt] = useState<string | null>(null);
   const [periodEnd, setPeriodEnd] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
@@ -103,6 +104,7 @@ function UpgradeContent() {
         const body = await res.json();
         setCurrentPlan(body.plan);
         setIsTrial(body.isTrial || false);
+        setTrialEndsAt(body.trialEndsAt || null);
         setCancelledAt(body.cancelledAt || null);
         setPeriodEnd(body.periodEnd || null);
       } catch {
@@ -199,22 +201,84 @@ function UpgradeContent() {
   };
 
   // Header text based on plan
-  const headerTitle = currentPlan && !isTrial ? 'Jouw abonnement' : 'Kies je plan';
-  const headerSubtitle = currentPlan && !isTrial
-    ? `Je hebt momenteel het ${currentPlan === 'premium' ? 'Premium' : 'Basic'} abonnement.`
-    : 'Kies het plan dat bij je rijschool past.';
+  const headerTitle = isTrial
+    ? 'Kies je plan'
+    : currentPlan
+      ? 'Jouw abonnement'
+      : 'Kies je plan';
+  const headerSubtitle = isTrial
+    ? 'Kies een plan voordat je proefperiode afloopt.'
+    : currentPlan
+      ? `Je hebt momenteel het ${currentPlan === 'premium' ? 'Premium' : 'Basic'} abonnement.`
+      : 'Kies het plan dat bij je rijschool past.';
+
+  const trialEndFormatted = trialEndsAt
+    ? new Date(trialEndsAt).toLocaleDateString('nl-NL', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null;
 
   return (
     <main className="upgrade-page">
       <div className="upgrade-container">
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div className="logo"><RibbaLogo height={36} /></div>
           <h1 style={{ fontSize: 36, marginBottom: 8 }}>{headerTitle}</h1>
           <p className="subtitle">
             {planLoading ? 'Laden...' : headerSubtitle}
           </p>
         </div>
+
+        {/* Trial-banner: tijdens proefperiode heeft de school feitelijk Premium-toegang */}
+        {isTrial && !planLoading && (
+          <div
+            style={{
+              maxWidth: 780,
+              margin: '0 auto 32px',
+              padding: '16px 20px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 14,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+              color: '#1E3A8A',
+              fontSize: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#2563EB',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 999,
+                letterSpacing: 0.4,
+                whiteSpace: 'nowrap',
+                marginTop: 2,
+              }}
+            >
+              PROEFPERIODE
+            </span>
+            <div>
+              Je gebruikt nu <strong>Premium</strong> — alle functies vrij, onbeperkt leerlingen en instructeurs.
+              {trialEndFormatted && (
+                <>
+                  {' '}
+                  Je proefperiode loopt af op <strong>{trialEndFormatted}</strong>. Kies daarvoor een abonnement zodat je geen toegang verliest.
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -268,6 +332,8 @@ function UpgradeContent() {
           <div className={`plan-card plan-card-premium${isCurrentPlan('premium') ? ' plan-card-current-premium' : ''}`}>
             {isCurrentPlan('premium') ? (
               <div className="plan-current-badge plan-current-badge-premium">Huidig</div>
+            ) : isTrial ? (
+              <div className="plan-popular">Nu actief tijdens proef</div>
             ) : (
               <div className="plan-popular">Meest gekozen</div>
             )}
