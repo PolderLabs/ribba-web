@@ -5,12 +5,37 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://link.ribba.app"),
   title: "Ribba",
   description: "Ribba – slimme rijschool software",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/og-image.png",
+    shortcut: "/og-image.png",
+    apple: "/og-image.png",
+  },
+  openGraph: {
+    title: "Ribba – slimme rijschool software",
+    description:
+      "Plan lessen, beheer leerlingen en facturatie — alles in één app voor je rijschool.",
+    url: "https://link.ribba.app",
+    siteName: "Ribba",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 512,
+        height: 512,
+        alt: "Ribba – slimme rijschool software",
+      },
+    ],
+    locale: "nl_NL",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ribba – slimme rijschool software",
+    description:
+      "Plan lessen, beheer leerlingen en facturatie — alles in één app voor je rijschool.",
+    images: ["/og-image.png"],
   },
 };
 
