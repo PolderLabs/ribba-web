@@ -1,22 +1,19 @@
 {
   "applinks": {
-    "apps": [],
     "details": [
       {
-        "appID": "486FCW8KK7.app.ribba.pro",
-        "paths": [
-          "/rijschool-planner",
-          "/rijschool-planner/*",
-          "/join",
-          "/join/*",
-          "/reset",
-          "/reset/*",
-          "/login",
-          "/upgrade",
-          "/upgrade/*",
-          "/registreren",
-          "/payment",
-          "/payment/*"
+        "appIDs": ["486FCW8KK7.app.ribba.pro"],
+        "components": [
+          { "/": "/upgrade", "exclude": true, "comment": "checkout moet in browser openen, niet in de app" },
+          { "/": "/login", "exclude": true, "comment": "website-login" },
+          { "/": "/registreren", "exclude": true, "comment": "schoolregistratie op website" },
+          { "/": "/rijschool-planner*", "exclude": true, "comment": "marketing" },
+          { "/": "/cal/*", "exclude": true, "comment": "iCal feed voor agenda-apps, geen app-deeplink" },
+          { "/": "/upgrade/success" },
+          { "/": "/payment/success" },
+          { "/": "/join/*" },
+          { "/": "/reset" },
+          { "/": "/reset/*" }
         ]
       }
     ]
