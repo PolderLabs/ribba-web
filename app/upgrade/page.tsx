@@ -140,20 +140,27 @@ function UpgradeContent() {
       setError('Geen rijschool gekoppeld. Open deze pagina vanuit de Ribba app.');
       return;
     }
-    if (!accessToken) {
-      router.replace('/login');
-      return;
-    }
 
     setLoading(plan);
     setError(null);
+
+    // Refresh-veilige token-fetch: Supabase access-tokens vervallen na ~1u,
+    // dus haal 'm vlak vóór de call op (de client refresht automatisch).
+    const supabase = getSupabaseBrowser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    setAccessToken(token);
 
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ school_id: schoolId, plan }),
       });
@@ -174,7 +181,7 @@ function UpgradeContent() {
   };
 
   const handleCancel = async () => {
-    if (!schoolId || !accessToken) return;
+    if (!schoolId) return;
     if (!confirm('Weet je zeker dat je je abonnement wilt opzeggen? Je houdt toegang tot het einde van de huidige betaalperiode.')) {
       return;
     }
@@ -182,12 +189,22 @@ function UpgradeContent() {
     setCancelling(true);
     setError(null);
 
+    // Refresh-veilige token-fetch (zie handleCheckout)
+    const supabase = getSupabaseBrowser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    setAccessToken(token);
+
     try {
       const res = await fetch('/api/cancel-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ school_id: schoolId }),
       });
