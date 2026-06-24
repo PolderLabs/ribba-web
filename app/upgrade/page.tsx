@@ -60,6 +60,7 @@ function UpgradeContent() {
   const [signingOut, setSigningOut] = useState(false);
   const [activeStudents, setActiveStudents] = useState<number | null>(null);
   const [activeInstructors, setActiveInstructors] = useState<number | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
@@ -194,12 +195,14 @@ function UpgradeContent() {
     }
   };
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!schoolId) return;
-    if (!confirm('Weet je zeker dat je je abonnement wilt opzeggen? Je houdt toegang tot het einde van de huidige betaalperiode.')) {
-      return;
-    }
+    setShowCancelModal(true);
+  };
 
+  const confirmCancel = async () => {
+    if (!schoolId) return;
+    setShowCancelModal(false);
     setCancelling(true);
     setError(null);
 
@@ -560,7 +563,118 @@ function UpgradeContent() {
           </p>
         </div>
       </div>
+
+      {/* Custom cancel-confirm modal — vervangt window.confirm() voor consistente UI */}
+      {showCancelModal && (
+        <CancelConfirmModal
+          onCancel={() => setShowCancelModal(false)}
+          onConfirm={confirmCancel}
+        />
+      )}
     </main>
+  );
+}
+
+function CancelConfirmModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = '';
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.55)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 16,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: 20,
+          padding: '28px 28px 24px',
+          maxWidth: 440,
+          width: '100%',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        }}
+      >
+        <h2
+          id="cancel-modal-title"
+          style={{
+            fontSize: 20,
+            fontWeight: 800,
+            color: '#1C1917',
+            margin: '0 0 12px',
+          }}
+        >
+          Abonnement opzeggen?
+        </h2>
+        <p style={{ fontSize: 15, color: '#57534E', lineHeight: 1.55, margin: '0 0 24px' }}>
+          Je houdt toegang tot het einde van je huidige betaalperiode. Daarna
+          stopt je abonnement en kun je opnieuw kiezen.
+        </p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              background: '#F5F5F4',
+              color: '#1C1917',
+              border: 'none',
+              padding: '12px 20px',
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Annuleren
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            autoFocus
+            style={{
+              background: '#DC2626',
+              color: '#fff',
+              border: 'none',
+              padding: '12px 20px',
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Ja, opzeggen
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
