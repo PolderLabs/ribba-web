@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
+import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -57,6 +58,8 @@ function UpgradeContent() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [schoolName, setSchoolName] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [activeStudents, setActiveStudents] = useState<number | null>(null);
+  const [activeInstructors, setActiveInstructors] = useState<number | null>(null);
 
   // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
@@ -103,19 +106,30 @@ function UpgradeContent() {
       }
 
       try {
-        const res = await fetch(`/api/current-plan?school_id=${resolvedSchoolId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.status === 401 || res.status === 403) {
+        const [planRes, usageRes] = await Promise.all([
+          fetch(`/api/current-plan?school_id=${resolvedSchoolId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/school-usage?school_id=${resolvedSchoolId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        if (planRes.status === 401 || planRes.status === 403) {
           router.replace('/login');
           return;
         }
-        const body = await res.json();
+        const body = await planRes.json();
         setCurrentPlan(body.plan);
         setIsTrial(body.isTrial || false);
         setTrialEndsAt(body.trialEndsAt || null);
         setCancelledAt(body.cancelledAt || null);
         setPeriodEnd(body.periodEnd || null);
+
+        if (usageRes.ok) {
+          const usage = await usageRes.json();
+          setActiveStudents(usage.active_students ?? 0);
+          setActiveInstructors(usage.active_instructors ?? 0);
+        }
       } catch {
         // ignore
       } finally {
@@ -236,6 +250,19 @@ function UpgradeContent() {
     if (plan === 'premium' && currentPlan === 'basic') return true;
     return false;
   };
+
+  // Basic-limietcheck: spiegelt /api/checkout (regel 86-125) zodat de gebruiker
+  // niet eerst hoeft te klikken om een 400 te krijgen. Counts nog laden? → null;
+  // dan niet pre-blokkeren maar server-side check vangt 't alsnog op.
+  const basicBlockedReason: string | null = (() => {
+    if (activeStudents !== null && activeStudents > BASIC_MAX_STUDENTS) {
+      return `Te veel actieve leerlingen voor Basic (${activeStudents}/${BASIC_MAX_STUDENTS}). Kies Premium, of archiveer leerlingen tot ${BASIC_MAX_STUDENTS}.`;
+    }
+    if (activeInstructors !== null && activeInstructors > BASIC_MAX_INSTRUCTORS) {
+      return `Te veel actieve instructeurs voor Basic (${activeInstructors}/${BASIC_MAX_INSTRUCTORS}). Kies Premium om met meerdere instructeurs te werken.`;
+    }
+    return null;
+  })();
 
   // Header text based on plan
   const headerTitle = isTrial
@@ -406,14 +433,22 @@ function UpgradeContent() {
             {isCurrentPlan('basic') ? (
               <div className="btn-current">Huidig abonnement</div>
             ) : canUpgradeTo('basic') ? (
-              <button
-                className="btn-secondary"
-                style={{ marginTop: 'auto' }}
-                onClick={() => handleCheckout('basic')}
-                disabled={loading !== null}
-              >
-                {loading === 'basic' ? 'Bezig...' : 'Kies Basic'}
-              </button>
+              <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  className="btn-secondary"
+                  onClick={() => handleCheckout('basic')}
+                  disabled={loading !== null || basicBlockedReason !== null}
+                  title={basicBlockedReason ?? undefined}
+                  style={basicBlockedReason ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                >
+                  {loading === 'basic' ? 'Bezig...' : 'Kies Basic'}
+                </button>
+                {basicBlockedReason && (
+                  <p style={{ fontSize: 12, color: '#B45309', margin: 0, lineHeight: 1.4 }}>
+                    {basicBlockedReason}
+                  </p>
+                )}
+              </div>
             ) : (
               <div style={{ marginTop: 'auto' }} />
             )}
