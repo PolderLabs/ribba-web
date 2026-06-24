@@ -5,6 +5,7 @@ import { sendAdminNotification } from '@/lib/admin-notifications';
 import {
   sendRecurringPaymentFailedMail,
   sendSubscriptionSuspendedMail,
+  sendSubscriptionActivatedMail,
 } from '@/lib/school-emails';
 
 const FAILED_PAYMENT_LIMIT = 3;
@@ -53,15 +54,24 @@ export async function POST(request: NextRequest) {
 
     // Only process paid first payments (subscription setup)
     if (payment.status === 'paid' && type === 'subscription_setup') {
-      // Get the license record
+      // Get the license record — incl. velden voor idempotency-check
       const { data: license } = await getSupabase()
         .from('instructor_licenses')
-        .select('id, mollie_customer_id')
+        .select('id, mollie_customer_id, external_subscription_id, billing_plan, is_trial')
         .eq('school_id', school_id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Idempotency: was deze license al actief op een betaald plan?
+      // Voorkomt dubbele mails als Mollie de setup-webhook re-deliveryt.
+      const wasAlreadyActivated = Boolean(
+        license &&
+          !license.is_trial &&
+          (license.billing_plan === 'basic' || license.billing_plan === 'premium') &&
+          license.external_subscription_id,
+      );
 
       const customerId = license?.mollie_customer_id || payment.customerId;
 
@@ -147,24 +157,44 @@ export async function POST(request: NextRequest) {
           .eq('id', license.id);
       }
 
-      // Admin notification — fire-and-forget
-      try {
-        const { data: schoolRow } = await getSupabase()
-          .from('drivingschools')
-          .select('name, email, city')
-          .eq('id', school_id)
-          .maybeSingle();
-        if (schoolRow) {
-          sendAdminNotification('subscription_activated', {
-            id: school_id,
-            name: schoolRow.name,
-            email: schoolRow.email,
-            city: schoolRow.city,
-            billing_plan: plan,
-          }).catch((e) => console.error('Admin notify (subscription_activated) failed:', e));
+      // Notificaties — alleen op de eerste activering, niet bij webhook-retries
+      // van dezelfde setup-payment. await zodat ze niet door Vercel worden
+      // afgekapt na de response.
+      if (!wasAlreadyActivated) {
+        try {
+          const { data: schoolRow } = await getSupabase()
+            .from('drivingschools')
+            .select('name, email, city')
+            .eq('id', school_id)
+            .maybeSingle();
+          if (schoolRow) {
+            // 1. Platformmelding naar Ribba beheerder
+            await sendAdminNotification('subscription_activated', {
+              id: school_id,
+              name: schoolRow.name,
+              email: schoolRow.email,
+              city: schoolRow.city,
+              billing_plan: plan,
+            }).catch((e) => console.error('Admin notify (subscription_activated) failed:', e));
+
+            // 2. Bevestigingsmail naar de rijschool
+            if (schoolRow.email) {
+              const nextChargeDate = new Date();
+              nextChargeDate.setMonth(nextChargeDate.getMonth() + 1);
+              await sendSubscriptionActivatedMail(
+                schoolRow.email,
+                schoolRow.name,
+                plan as 'basic' | 'premium',
+                parseFloat(PLAN_AMOUNTS[plan] || '45'),
+                nextChargeDate,
+              ).catch((e) => console.error('School subscription-activated mail failed:', e));
+            }
+          }
+        } catch (e) {
+          console.error('Notification lookup failed:', e);
         }
-      } catch (e) {
-        console.error('Admin notify lookup failed:', e);
+      } else {
+        console.log(`Subscription_setup webhook re-delivery voor school ${school_id} — mails overgeslagen (idempotent)`);
       }
     }
 

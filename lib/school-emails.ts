@@ -1,8 +1,10 @@
-// School-facing e-mails: payment failures, suspension, trial reminder.
-// Stuurt branded mails naar de rijschool zelf via Resend.
+// School-facing e-mails: subscription bevestiging, payment failures,
+// suspension, trial reminder. Stuurt branded mails naar de rijschool zelf
+// via Resend. Zelfde huisstijl als lib/admin-notifications.ts.
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
+const LOGO_URL = `${BASE_URL}/ribba-logo.png`;
 
 function escapeHtml(s: string): string {
   return s
@@ -37,28 +39,116 @@ async function sendMail(to: string, subject: string, html: string): Promise<void
   }
 }
 
-function wrap(title: string, accent: string, body: string): string {
+interface WrapOpts {
+  pillLabel: string;
+  pillBg: string;
+  pillColor: string;
+  title: string;
+  bodyHtml: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  ctaColor?: string;
+}
+
+function wrap(opts: WrapOpts): string {
+  const cta = opts.ctaLabel && opts.ctaHref
+    ? `
+      <tr><td style="padding:24px 32px 8px 32px">
+        <a href="${opts.ctaHref}" style="display:inline-block;background:${opts.ctaColor || '#2563EB'};color:#FFFFFF;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px">
+          ${escapeHtml(opts.ctaLabel)}
+        </a>
+      </td></tr>
+    `
+    : '';
+
   return `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f1f5f9;padding:24px 12px">
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0F172A">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F8FAFC;padding:32px 12px">
   <tr><td align="center">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden">
-      <tr><td style="background:${accent};padding:24px 28px;color:#ffffff">
-        <h1 style="margin:0;font-size:20px;font-weight:800">${title}</h1>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#FFFFFF;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.06)">
+
+      <!-- Logo header -->
+      <tr><td style="padding:32px 32px 8px 32px;text-align:left">
+        <img src="${LOGO_URL}" alt="Ribba" width="96" style="display:block;height:auto;border:0;outline:none;text-decoration:none">
       </td></tr>
-      <tr><td style="padding:24px 28px;font-size:15px;line-height:1.6;color:#1e293b">
-        ${body}
+
+      <!-- Status pill + title -->
+      <tr><td style="padding:24px 32px 8px 32px">
+        <span style="display:inline-block;background:${opts.pillBg};color:${opts.pillColor};font-size:11px;font-weight:700;padding:6px 12px;border-radius:999px;letter-spacing:0.4px;text-transform:uppercase">${escapeHtml(opts.pillLabel)}</span>
+        <h1 style="margin:14px 0 0 0;font-size:24px;font-weight:800;color:#0F172A;line-height:1.25">${escapeHtml(opts.title)}</h1>
       </td></tr>
-      <tr><td style="background:#0f172a;color:#94a3b8;padding:14px 28px;font-size:11px;text-align:center">
-        Ribba · vragen? <a href="mailto:hallo@ribba.app" style="color:#94a3b8">hallo@ribba.app</a>
+
+      <!-- Body -->
+      <tr><td style="padding:20px 32px 8px 32px;font-size:15px;line-height:1.6;color:#1E293B">
+        ${opts.bodyHtml}
       </td></tr>
+
+      ${cta}
+
+      <!-- Footer -->
+      <tr><td style="background:#F8FAFC;padding:18px 32px;margin-top:24px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
+        Ribba · vragen?
+        <a href="mailto:hallo@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">hallo@ribba.app</a>
+      </td></tr>
+
     </table>
   </td></tr>
 </table>
 </body></html>
   `.trim();
+}
+
+function formatDate(d: Date | string): string {
+  return new Date(d).toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatPrice(amount: number): string {
+  return `€${amount.toFixed(2).replace('.', ',')}`;
+}
+
+export async function sendSubscriptionActivatedMail(
+  schoolEmail: string,
+  schoolName: string,
+  plan: 'basic' | 'premium',
+  pricePerMonth: number,
+  nextChargeDate: Date | string,
+): Promise<void> {
+  const planLabel = plan === 'premium' ? 'Premium' : 'Basic';
+  const subject = `Welkom bij Ribba ${planLabel}!`;
+  const html = wrap({
+    pillLabel: 'Abonnement actief',
+    pillBg: '#CCFBF1',
+    pillColor: '#134E4A',
+    title: `Bedankt voor je abonnement, ${schoolName}!`,
+    bodyHtml: `
+      <p style="margin:0 0 16px">Je <strong>Ribba ${escapeHtml(planLabel)}</strong>-abonnement is geactiveerd. Je hebt direct toegang tot alle functies van je gekozen plan.</p>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#F8FAFC;border-radius:12px;margin:16px 0">
+        <tr>
+          <td style="padding:14px 16px;font-size:13px;color:#64748B;width:160px">Plan</td>
+          <td style="padding:14px 16px;font-size:14px;color:#0F172A;font-weight:600">${escapeHtml(planLabel)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Maandbedrag</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatPrice(pricePerMonth)} excl. BTW</td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Volgende incasso</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatDate(nextChargeDate)}</td>
+        </tr>
+      </table>
+      <p style="margin:16px 0 8px;font-size:14px;color:#475569">De volgende maandbedragen gaan automatisch via SEPA-incasso van je rekening. Opzeggen kan altijd via <a href="${BASE_URL}/upgrade" style="color:#2563EB;font-weight:600">jouw abonnementspagina</a>.</p>
+    `,
+    ctaLabel: 'Open je dashboard',
+    ctaHref: `${BASE_URL}/upgrade`,
+    ctaColor: '#0D9488',
+  });
+  await sendMail(schoolEmail, subject, html);
 }
 
 export async function sendRecurringPaymentFailedMail(
@@ -67,22 +157,18 @@ export async function sendRecurringPaymentFailedMail(
   attempt: number,
 ): Promise<void> {
   const subject = `Incasso niet gelukt — controleer je rekening`;
-  const html = wrap(
-    'Incasso niet gelukt',
-    '#ea580c',
-    `
-    <p>Beste ${escapeHtml(schoolName)},</p>
-    <p>De automatische SEPA-incasso van je Ribba-abonnement is helaas niet gelukt
-    (poging ${attempt} van 3). Vaak komt dit door onvoldoende saldo of een
-    blokkade op de rekening.</p>
-    <p><strong>Wat nu?</strong> We proberen het automatisch opnieuw. Zorg dat
-    er voldoende saldo op je zakelijke rekening staat — anders wordt je
-    abonnement na de derde mislukte poging opgeschort en verliezen je
-    instructeurs toegang.</p>
-    <p>Vragen of klopt er iets niet? Mail ons even op
-    <a href="mailto:hallo@ribba.app" style="color:#2563EB">hallo@ribba.app</a>.</p>
+  const html = wrap({
+    pillLabel: 'Betaling mislukt',
+    pillBg: '#FFEDD5',
+    pillColor: '#9A3412',
+    title: 'Incasso niet gelukt',
+    bodyHtml: `
+      <p style="margin:0 0 12px">Beste ${escapeHtml(schoolName)},</p>
+      <p style="margin:0 0 12px">De automatische SEPA-incasso van je Ribba-abonnement is helaas niet gelukt (poging ${attempt} van 3). Vaak komt dit door onvoldoende saldo of een blokkade op de rekening.</p>
+      <p style="margin:0 0 12px"><strong>Wat nu?</strong> We proberen het automatisch opnieuw. Zorg dat er voldoende saldo op je zakelijke rekening staat — anders wordt je abonnement na de derde mislukte poging opgeschort en verliezen je instructeurs toegang.</p>
+      <p style="margin:0">Vragen of klopt er iets niet? Mail ons even op <a href="mailto:hallo@ribba.app" style="color:#2563EB;font-weight:600">hallo@ribba.app</a>.</p>
     `,
-  );
+  });
   await sendMail(schoolEmail, subject, html);
 }
 
@@ -91,24 +177,20 @@ export async function sendSubscriptionSuspendedMail(
   schoolName: string,
 ): Promise<void> {
   const subject = `Je Ribba-abonnement is opgeschort`;
-  const html = wrap(
-    'Je abonnement is opgeschort',
-    '#7f1d1d',
-    `
-    <p>Beste ${escapeHtml(schoolName)},</p>
-    <p>Na drie mislukte SEPA-incassopogingen hebben we je Ribba-abonnement
-    moeten opschorten. Je instructeurs hebben hierdoor geen toegang meer
-    tot betaalde functies.</p>
-    <p>Wil je weer aan de slag? Activeer je abonnement opnieuw via:</p>
-    <p style="margin:20px 0">
-      <a href="${BASE_URL}/upgrade" style="display:inline-block;background:#2563EB;color:#ffffff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:700">
-        Abonnement reactiveren →
-      </a>
-    </p>
-    <p>Vragen? Mail ons op
-    <a href="mailto:hallo@ribba.app" style="color:#2563EB">hallo@ribba.app</a>.</p>
+  const html = wrap({
+    pillLabel: 'Opgeschort',
+    pillBg: '#FEE2E2',
+    pillColor: '#7F1D1D',
+    title: 'Je abonnement is opgeschort',
+    bodyHtml: `
+      <p style="margin:0 0 12px">Beste ${escapeHtml(schoolName)},</p>
+      <p style="margin:0 0 12px">Na drie mislukte SEPA-incassopogingen hebben we je Ribba-abonnement moeten opschorten. Je instructeurs hebben hierdoor geen toegang meer tot betaalde functies.</p>
+      <p style="margin:0">Wil je weer aan de slag? Activeer je abonnement opnieuw via de knop hieronder. Vragen? Mail <a href="mailto:hallo@ribba.app" style="color:#2563EB;font-weight:600">hallo@ribba.app</a>.</p>
     `,
-  );
+    ctaLabel: 'Abonnement reactiveren',
+    ctaHref: `${BASE_URL}/upgrade`,
+    ctaColor: '#2563EB',
+  });
   await sendMail(schoolEmail, subject, html);
 }
 
@@ -117,31 +199,37 @@ export async function sendTrialEndingReminderMail(
   schoolName: string,
   daysLeft: number,
 ): Promise<void> {
-  const subject =
-    daysLeft <= 1
-      ? `Je proefperiode loopt morgen af — kies een abonnement`
-      : `Nog ${daysLeft} dagen proefperiode — kies een abonnement`;
-  const urgency = daysLeft <= 1 ? '#dc2626' : '#2563EB';
-  const html = wrap(
-    daysLeft <= 1 ? 'Je proefperiode loopt morgen af' : `Nog ${daysLeft} dagen proefperiode`,
-    urgency,
-    `
-    <p>Beste ${escapeHtml(schoolName)},</p>
-    <p>Je gratis proefperiode van Ribba loopt ${daysLeft <= 1 ? 'morgen' : `over ${daysLeft} dagen`} af.
-    Om je rijschool zonder onderbreking te blijven beheren, kies een abonnement
-    en stel je SEPA-machtiging in.</p>
-    <p style="margin:20px 0">
-      <a href="${BASE_URL}/upgrade" style="display:inline-block;background:${urgency};color:#ffffff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:700">
-        Kies een abonnement →
-      </a>
-    </p>
-    <p style="background:#f8fafc;border-radius:10px;padding:14px 16px;font-size:14px;color:#475569">
-      <strong>Basic — €25 / maand:</strong> 1 instructeur, tot 30 leerlingen.<br>
-      <strong>Premium — €45 / maand:</strong> onbeperkt instructeurs &amp; leerlingen, CBR-koppeling, Moneybird.
-    </p>
-    <p>De eerste betaling gaat via iDEAL, daarna automatisch via SEPA-incasso.
-    Opzeggen kan altijd.</p>
+  const isUrgent = daysLeft <= 1;
+  const subject = isUrgent
+    ? `Je proefperiode loopt morgen af — kies een abonnement`
+    : `Nog ${daysLeft} dagen proefperiode — kies een abonnement`;
+  const html = wrap({
+    pillLabel: isUrgent ? 'Loopt morgen af' : `Nog ${daysLeft} dagen`,
+    pillBg: isUrgent ? '#FEE2E2' : '#DBEAFE',
+    pillColor: isUrgent ? '#991B1B' : '#1E40AF',
+    title: isUrgent ? 'Je proefperiode loopt morgen af' : `Nog ${daysLeft} dagen proefperiode`,
+    bodyHtml: `
+      <p style="margin:0 0 12px">Beste ${escapeHtml(schoolName)},</p>
+      <p style="margin:0 0 16px">Je gratis proefperiode van Ribba loopt ${isUrgent ? 'morgen' : `over ${daysLeft} dagen`} af. Om je rijschool zonder onderbreking te blijven beheren, kies een abonnement en stel je SEPA-machtiging in.</p>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#F8FAFC;border-radius:12px;margin:16px 0">
+        <tr>
+          <td style="padding:14px 16px;font-size:14px;color:#0F172A">
+            <strong>Basic — €25 / maand</strong><br>
+            <span style="font-size:13px;color:#64748B">1 instructeur, tot 30 leerlingen</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;border-top:1px solid #E2E8F0;padding-top:14px">
+            <strong>Premium — €45 / maand</strong><br>
+            <span style="font-size:13px;color:#64748B">Onbeperkt leerlingen, tot 5 instructeurs, alle koppelingen</span>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0;font-size:13px;color:#64748B">De eerste betaling gaat via iDEAL, daarna automatisch via SEPA-incasso. Opzeggen kan altijd.</p>
     `,
-  );
+    ctaLabel: 'Kies een abonnement',
+    ctaHref: `${BASE_URL}/upgrade`,
+    ctaColor: isUrgent ? '#DC2626' : '#2563EB',
+  });
   await sendMail(schoolEmail, subject, html);
 }
