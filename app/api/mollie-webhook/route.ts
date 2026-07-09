@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     const payment = await getMollie().payments.get(paymentId);
     const metadata = JSON.parse((payment.metadata as string) || '{}');
-    const { school_id, plan, type } = metadata;
+    const { school_id, plan, type, replaces_subscription_id } = metadata;
 
     if (!school_id || !plan) {
       console.error('Webhook: missing metadata', metadata);
@@ -128,6 +128,91 @@ export async function POST(request: NextRequest) {
               already_activated: wasAlreadyActivated,
             },
           });
+
+          // B1: Cancel oude subscription pas NÁ succesvolle nieuwe setup + DB-update.
+          // replaces_subscription_id is meegegeven door /api/checkout in payment.metadata.
+          // Falen is niet fataal: klant krijgt kort dubbele Mollie-sub die admin
+          // handmatig moet opruimen; we loggen + notify. Webhook returnt sowieso 200
+          // om te voorkomen dat Mollie retryt en we een tweede nieuwe sub aanmaken.
+          //
+          // Idempotency: hergebruik van bestaande `wasAlreadyActivated`-gate. Op
+          // webhook re-delivery is de eerste cancel al gedaan (of geprobeerd);
+          // opnieuw cancelen zou een 422 "already canceled" geven en een
+          // false-positive `old_subscription_cancel_failed` + admin-notify triggeren.
+          if (
+            !wasAlreadyActivated &&
+            replaces_subscription_id &&
+            typeof replaces_subscription_id === 'string' &&
+            replaces_subscription_id !== subscription.id
+          ) {
+            try {
+              await getMollie().customerSubscriptions.cancel(
+                replaces_subscription_id,
+                { customerId },
+              );
+              console.log(
+                `Cancelled old subscription ${replaces_subscription_id} for school ${school_id} after new setup`,
+              );
+              await logBillingEvent({
+                school_id,
+                event_type: 'old_subscription_cancelled',
+                source: 'mollie-webhook',
+                payload: {
+                  plan,
+                  payment_id: paymentId,
+                  old_subscription_id: replaces_subscription_id,
+                  new_subscription_id: subscription.id,
+                  mollie_customer_id: customerId,
+                },
+              });
+            } catch (oldCancelErr) {
+              const errStr = String(oldCancelErr).slice(0, 500);
+              console.error(
+                `Failed to cancel old subscription ${replaces_subscription_id} after new setup:`,
+                oldCancelErr,
+              );
+              await logBillingEvent({
+                school_id,
+                event_type: 'old_subscription_cancel_failed',
+                source: 'mollie-webhook',
+                payload: {
+                  plan,
+                  payment_id: paymentId,
+                  old_subscription_id: replaces_subscription_id,
+                  new_subscription_id: subscription.id,
+                  mollie_customer_id: customerId,
+                  error: errStr,
+                },
+              });
+              try {
+                const { data: schoolRow } = await getSupabase()
+                  .from('drivingschools')
+                  .select('name, email, city')
+                  .eq('id', school_id)
+                  .maybeSingle();
+                if (schoolRow) {
+                  await sendAdminNotification('subscription_creation_failed', {
+                    id: school_id,
+                    name: schoolRow.name,
+                    email: schoolRow.email,
+                    city: schoolRow.city,
+                    billing_plan: plan,
+                    extra: {
+                      reason: 'old_subscription_cancel_failed',
+                      old_subscription_id: replaces_subscription_id,
+                      new_subscription_id: subscription.id,
+                      mollie_customer_id: customerId,
+                      error: errStr,
+                    },
+                  }).catch((e) =>
+                    console.error('Admin notify (old_subscription_cancel_failed) failed:', e),
+                  );
+                }
+              } catch (notifyErr) {
+                console.error('Admin notify lookup failed:', notifyErr);
+              }
+            }
+          }
         } catch (subError) {
           // Eerste betaling is gelukt, maar subscription aanmaken mislukte.
           // Admin notify + return 500 zodat Mollie de webhook retried.

@@ -125,18 +125,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Cancel existing Mollie subscription if upgrading/changing plan
-    if (license?.external_subscription_id && license?.mollie_customer_id) {
-      try {
-        await getMollie().customerSubscriptions.cancel(
-          license.external_subscription_id,
-          { customerId: license.mollie_customer_id },
-        );
-        console.log(`Cancelled old subscription ${license.external_subscription_id} for plan change`);
-      } catch (cancelErr) {
-        console.warn('Could not cancel old subscription (may already be cancelled):', cancelErr);
-      }
-    }
+    // B1: de eventuele oude subscription NIET meer direct hier cancelen.
+    // Als de user de iDEAL-flow afbreekt, zou de oude sub anders al dood zijn
+    // terwijl de nieuwe nooit is aangemaakt → school raakt toegang kwijt zonder
+    // waarschuwing. In plaats daarvan geven we de oude subscription-id mee als
+    // `replaces_subscription_id` in de payment.metadata; de webhook cancelt 'm
+    // pas nadat de nieuwe subscription succesvol is aangemaakt (in mollie-webhook).
+    const replacesSubscriptionId = license?.external_subscription_id ?? null;
 
     let mollieCustomerId = license?.mollie_customer_id;
 
@@ -167,7 +162,12 @@ export async function POST(request: NextRequest) {
       sequenceType: SequenceType.first,
       redirectUrl: `${baseUrl}/upgrade/success?school_id=${school_id}&plan=${plan}`,
       webhookUrl: `${baseUrl}/api/mollie-webhook`,
-      metadata: JSON.stringify({ school_id, plan, type: 'subscription_setup' }),
+      metadata: JSON.stringify({
+        school_id,
+        plan,
+        type: 'subscription_setup',
+        replaces_subscription_id: replacesSubscriptionId,
+      }),
     });
 
     await logBillingEvent({
@@ -179,9 +179,7 @@ export async function POST(request: NextRequest) {
         payment_id: payment.id,
         mollie_customer_id: mollieCustomerId,
         previous_billing_plan: license?.billing_plan ?? null,
-        cancelled_old_subscription: Boolean(
-          license?.external_subscription_id && license?.mollie_customer_id,
-        ),
+        replaces_subscription_id: replacesSubscriptionId,
       },
     });
 
