@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import { logBillingEvent } from '@/lib/billing-events';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -81,10 +82,33 @@ export async function GET(request: NextRequest) {
 
       results.push({ school_id: license.school_id, status: 'fixed' });
       console.log(`reconcile: fixed school ${license.school_id} → subscription ${subscription.id}`);
+
+      await logBillingEvent({
+        school_id: license.school_id,
+        event_type: 'subscription_reconciled',
+        source: 'cron:reconcile-subscriptions',
+        payload: {
+          plan,
+          external_subscription_id: subscription.id,
+          mollie_customer_id: license.mollie_customer_id,
+          period_end: startDate.toISOString(),
+        },
+      });
     } catch (err) {
       const reason = String(err).slice(0, 200);
       results.push({ school_id: license.school_id, status: 'failed', reason });
       console.error(`reconcile: failed for school ${license.school_id}:`, err);
+
+      await logBillingEvent({
+        school_id: license.school_id,
+        event_type: 'subscription_reconcile_failed',
+        source: 'cron:reconcile-subscriptions',
+        payload: {
+          plan,
+          mollie_customer_id: license.mollie_customer_id,
+          error: reason,
+        },
+      });
 
       const { data: schoolRow } = await getSupabase()
         .from('drivingschools')

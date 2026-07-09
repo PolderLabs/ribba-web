@@ -7,6 +7,7 @@ import {
   sendSubscriptionSuspendedMail,
   sendSubscriptionActivatedMail,
 } from '@/lib/school-emails';
+import { logBillingEvent } from '@/lib/billing-events';
 
 const FAILED_PAYMENT_LIMIT = 3;
 
@@ -113,6 +114,20 @@ export async function POST(request: NextRequest) {
             .eq('id', license?.id);
 
           console.log(`Subscription ${subscription.id} created for school ${school_id}, starts ${startDateStr}`);
+
+          await logBillingEvent({
+            school_id,
+            event_type: 'subscription_created',
+            source: 'mollie-webhook',
+            payload: {
+              plan,
+              payment_id: paymentId,
+              external_subscription_id: subscription.id,
+              mollie_customer_id: customerId,
+              period_end: startDate.toISOString(),
+              already_activated: wasAlreadyActivated,
+            },
+          });
         } catch (subError) {
           // Eerste betaling is gelukt, maar subscription aanmaken mislukte.
           // Admin notify + return 500 zodat Mollie de webhook retried.
@@ -142,6 +157,18 @@ export async function POST(request: NextRequest) {
           } catch (notifyErr) {
             console.error('Admin notify (subscription_creation_failed) failed:', notifyErr);
           }
+
+          await logBillingEvent({
+            school_id,
+            event_type: 'subscription_creation_failed',
+            source: 'mollie-webhook',
+            payload: {
+              plan,
+              payment_id: paymentId,
+              mollie_customer_id: customerId,
+              error: String(subError).slice(0, 500),
+            },
+          });
 
           return NextResponse.json({ status: 'retry' }, { status: 500 });
         }
@@ -182,6 +209,7 @@ export async function POST(request: NextRequest) {
               const nextChargeDate = new Date();
               nextChargeDate.setMonth(nextChargeDate.getMonth() + 1);
               await sendSubscriptionActivatedMail(
+                school_id,
                 schoolRow.email,
                 schoolRow.name,
                 plan as 'basic' | 'premium',
@@ -214,6 +242,13 @@ export async function POST(request: NextRequest) {
         .eq('status', 'active');
 
       console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
+
+      await logBillingEvent({
+        school_id,
+        event_type: 'recurring_payment_paid',
+        source: 'mollie-webhook',
+        payload: { plan, payment_id: paymentId, new_period_end: newPeriodEnd.toISOString() },
+      });
     }
 
     // Handle failed recurring payment — escalatieladder:
@@ -241,6 +276,13 @@ export async function POST(request: NextRequest) {
             last_failed_payment_at: new Date().toISOString(),
           })
           .eq('id', license.id);
+
+        await logBillingEvent({
+          school_id,
+          event_type: 'recurring_payment_failed',
+          source: 'mollie-webhook',
+          payload: { plan, payment_id: paymentId, attempt: newCount, limit: FAILED_PAYMENT_LIMIT },
+        });
 
         const { data: schoolRow } = await getSupabase()
           .from('drivingschools')
@@ -272,8 +314,21 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', license.id);
 
+          await logBillingEvent({
+            school_id,
+            event_type: 'subscription_suspended',
+            source: 'mollie-webhook',
+            payload: {
+              plan,
+              payment_id: paymentId,
+              failed_payment_count: newCount,
+              limit: FAILED_PAYMENT_LIMIT,
+              cancelled_external_subscription_id: license.external_subscription_id,
+            },
+          });
+
           if (schoolRow?.email) {
-            await sendSubscriptionSuspendedMail(schoolRow.email, schoolRow.name).catch((e) =>
+            await sendSubscriptionSuspendedMail(school_id, schoolRow.email, schoolRow.name).catch((e) =>
               console.error('School suspended mail failed:', e),
             );
           }
@@ -290,6 +345,7 @@ export async function POST(request: NextRequest) {
         } else {
           if (schoolRow?.email) {
             await sendRecurringPaymentFailedMail(
+              school_id,
               schoolRow.email,
               schoolRow.name,
               newCount,

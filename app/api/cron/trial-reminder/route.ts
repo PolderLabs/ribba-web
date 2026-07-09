@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        await sendTrialEndingReminderMail(school.email, school.name, days);
+        await sendTrialEndingReminderMail(school.id, school.email, school.name, days);
         sent.push({ school_id: school.id, days, email: school.email });
         console.log(`trial-reminder: sent to ${school.email} (${days} days left)`);
       } catch (e) {

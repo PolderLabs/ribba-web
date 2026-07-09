@@ -3,6 +3,7 @@ import { createMollieClient, SequenceType } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
+import { logBillingEvent } from '@/lib/billing-events';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -167,6 +168,21 @@ export async function POST(request: NextRequest) {
       redirectUrl: `${baseUrl}/upgrade/success?school_id=${school_id}&plan=${plan}`,
       webhookUrl: `${baseUrl}/api/mollie-webhook`,
       metadata: JSON.stringify({ school_id, plan, type: 'subscription_setup' }),
+    });
+
+    await logBillingEvent({
+      school_id,
+      event_type: 'checkout_initiated',
+      source: 'checkout',
+      payload: {
+        plan,
+        payment_id: payment.id,
+        mollie_customer_id: mollieCustomerId,
+        previous_billing_plan: license?.billing_plan ?? null,
+        cancelled_old_subscription: Boolean(
+          license?.external_subscription_id && license?.mollie_customer_id,
+        ),
+      },
     });
 
     return NextResponse.json({

@@ -3,6 +3,7 @@ import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import { logBillingEvent } from '@/lib/billing-events';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -80,6 +81,17 @@ export async function POST(request: NextRequest) {
         external_subscription_id: null,
       })
       .eq('id', license.id);
+
+    await logBillingEvent({
+      school_id,
+      event_type: 'subscription_cancelled',
+      source: 'cancel-subscription',
+      payload: {
+        billing_plan: license.billing_plan,
+        cancelled_external_subscription_id: license.external_subscription_id,
+        mollie_customer_id: license.mollie_customer_id,
+      },
+    });
 
     // Admin notification — fire-and-forget
     try {
