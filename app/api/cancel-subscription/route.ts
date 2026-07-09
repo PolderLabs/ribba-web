@@ -83,11 +83,16 @@ export async function POST(request: NextRequest) {
       const messageLower = message.toLowerCase();
 
       // Strict detectie:
-      //   1. statusCode 410 = idempotent succes.
+      //   1. statusCode 410 (Gone) OF 422 (Unprocessable Entity) = idempotent succes.
+      //      Mollie retourneert in de praktijk 422 met bericht "The subscription
+      //      has been cancelled" wanneer je een reeds gecancelde sub opnieuw
+      //      probeert te cancelen (docs.mollie.com/reference/handling-errors +
+      //      diverse mollie-api-client issues).
       //   2. Message-match ALLEEN als fallback wanneer statusCode ontbreekt.
       //   3. Bij twijfel: behandelen als echte failure.
       const isAlreadyCancelled =
         statusCode === 410 ||
+        statusCode === 422 ||
         (statusCode === undefined &&
           (messageLower.includes('already') || messageLower.includes('canceled')));
 
