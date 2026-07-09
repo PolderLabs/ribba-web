@@ -313,27 +313,90 @@ export async function POST(request: NextRequest) {
 
     // Handle recurring payments — extend period_end by 1 month + reset failure counter
     if (payment.status === 'paid' && type === 'recurring') {
-      const newPeriodEnd = new Date();
-      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
-
-      await getSupabase()
+      // B2: pre-fetch huidige license state om te controleren of de rijschool
+      // inmiddels heeft opgezegd. Zo ja: dit is een onterechte incasso die
+      // period_end niet meer mag verlengen (zou toegang na opzegging verlengen).
+      const { data: licenseState } = await getSupabase()
         .from('instructor_licenses')
-        .update({
-          period_end: newPeriodEnd.toISOString(),
-          failed_payment_count: 0,
-          last_failed_payment_at: null,
-        })
+        .select('id, cancelled_at, period_end, billing_plan')
         .eq('school_id', school_id)
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
+      if (licenseState?.cancelled_at) {
+        // Opgezegd → NIET verlengen, NIET failed_payment_count resetten,
+        // NIET het normale recurring_payment_paid event loggen (zou tegenstrijdig
+        // zijn met _ignored). Alleen audit + admin-notify. Webhook returnt
+        // sowieso 200 aan het einde (voorkomt Mollie-retry).
+        console.warn(
+          `Recurring payment ${paymentId} received for school ${school_id} AFTER cancellation (${licenseState.cancelled_at}) — period_end NOT extended`,
+        );
 
-      await logBillingEvent({
-        school_id,
-        event_type: 'recurring_payment_paid',
-        source: 'mollie-webhook',
-        payload: { plan, payment_id: paymentId, new_period_end: newPeriodEnd.toISOString() },
-      });
+        await logBillingEvent({
+          school_id,
+          event_type: 'recurring_payment_after_cancel_ignored',
+          source: 'mollie-webhook',
+          payload: {
+            plan,
+            payment_id: paymentId,
+            cancelled_at: licenseState.cancelled_at,
+            period_end_kept: licenseState.period_end,
+            billing_plan: licenseState.billing_plan,
+          },
+        });
+
+        try {
+          const { data: schoolRow } = await getSupabase()
+            .from('drivingschools')
+            .select('name, email, city')
+            .eq('id', school_id)
+            .maybeSingle();
+          if (schoolRow) {
+            await sendAdminNotification('subscription_creation_failed', {
+              id: school_id,
+              name: schoolRow.name,
+              email: schoolRow.email,
+              city: schoolRow.city,
+              billing_plan: licenseState.billing_plan,
+              extra: {
+                reason: 'unexpected_recurring_after_cancel',
+                payment_id: paymentId,
+                cancelled_at: licenseState.cancelled_at,
+                period_end_kept: licenseState.period_end,
+              },
+            }).catch((e) =>
+              console.error('Admin notify (unexpected_recurring_after_cancel) failed:', e),
+            );
+          }
+        } catch (notifyErr) {
+          console.error('Admin notify lookup failed:', notifyErr);
+        }
+      } else {
+        // Normaal pad: verlengen + counter reset + bestaand billing_event.
+        const newPeriodEnd = new Date();
+        newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+
+        await getSupabase()
+          .from('instructor_licenses')
+          .update({
+            period_end: newPeriodEnd.toISOString(),
+            failed_payment_count: 0,
+            last_failed_payment_at: null,
+          })
+          .eq('school_id', school_id)
+          .eq('status', 'active');
+
+        console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
+
+        await logBillingEvent({
+          school_id,
+          event_type: 'recurring_payment_paid',
+          source: 'mollie-webhook',
+          payload: { plan, payment_id: paymentId, new_period_end: newPeriodEnd.toISOString() },
+        });
+      }
     }
 
     // Handle failed recurring payment — escalatieladder:
