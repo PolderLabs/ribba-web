@@ -3,6 +3,7 @@
 // Bevat altijd een samenvatting van het totale aantal rijscholen + actieve abonnementen.
 
 import { createClient } from '@supabase/supabase-js';
+import { logBillingEvent } from './billing-events';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || 'info@010rijbewijs.nl';
@@ -289,9 +290,39 @@ export async function sendAdminNotification(type: AdminEventType, school: School
         html,
       }),
     });
-    if (!res.ok) {
-      const errText = await res.text();
+
+    // Body één keer lezen: id op success (voor billing_events),
+    // text op fail (voor console + billing_events payload).
+    let resendId: string | null = null;
+    let errText = '';
+    if (res.ok) {
+      try {
+        const body = await res.json();
+        if (body && typeof body === 'object' && 'id' in body) {
+          resendId = (body as { id?: string }).id ?? null;
+        }
+      } catch {
+        /* body parse-fail is niet fataal */
+      }
+    } else {
+      errText = await res.text().catch(() => '');
       console.error('admin-notifications: send failed', res.status, errText);
+    }
+
+    // billing-events log — non-blocking. school.id kan ontbreken bij oudere
+    // callsites; sla dan de log gewoon over, mail-gedrag blijft ongewijzigd.
+    if (school.id) {
+      await logBillingEvent({
+        school_id: school.id,
+        event_type: res.ok ? 'email_sent' : 'email_failed',
+        source: 'admin-notifications',
+        email_type: `admin.${type}`,
+        recipient: ADMIN_EMAIL,
+        resend_message_id: resendId,
+        payload: res.ok
+          ? { subject: `${ev.subject}: ${school.name}`, school_name: school.name }
+          : { status: res.status, error: errText.slice(0, 500) },
+      });
     }
   } catch (e) {
     console.error('admin-notifications: unexpected error', e);

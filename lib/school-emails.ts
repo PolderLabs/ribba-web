@@ -2,9 +2,16 @@
 // suspension, trial reminder. Stuurt branded mails naar de rijschool zelf
 // via Resend. Zelfde huisstijl als lib/admin-notifications.ts.
 
+import { logBillingEvent } from './billing-events';
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
 const LOGO_URL = `${BASE_URL}/ribba-logo.png`;
+
+interface MailLogMeta {
+  schoolId: string;
+  emailType: string;
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -15,7 +22,12 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-async function sendMail(to: string, subject: string, html: string): Promise<void> {
+async function sendMail(
+  to: string,
+  subject: string,
+  html: string,
+  logMeta: MailLogMeta,
+): Promise<void> {
   if (!RESEND_API_KEY) {
     console.warn('school-emails: RESEND_API_KEY not set, skipping', subject, to);
     return;
@@ -33,10 +45,36 @@ async function sendMail(to: string, subject: string, html: string): Promise<void
       html,
     }),
   });
-  if (!res.ok) {
-    const errText = await res.text();
+
+  // Body één keer lezen: id op success, text op fail.
+  let resendId: string | null = null;
+  let errText = '';
+  if (res.ok) {
+    try {
+      const body = await res.json();
+      if (body && typeof body === 'object' && 'id' in body) {
+        resendId = (body as { id?: string }).id ?? null;
+      }
+    } catch {
+      /* body parse-fail is niet fataal */
+    }
+  } else {
+    errText = await res.text().catch(() => '');
     console.error('school-emails: send failed', res.status, errText);
   }
+
+  // billing-events log — non-blocking, mag mailflow niet raken.
+  await logBillingEvent({
+    school_id: logMeta.schoolId,
+    event_type: res.ok ? 'email_sent' : 'email_failed',
+    source: 'school-emails',
+    email_type: logMeta.emailType,
+    recipient: to,
+    resend_message_id: resendId,
+    payload: res.ok
+      ? { subject }
+      : { status: res.status, error: errText.slice(0, 500), subject },
+  });
 }
 
 interface WrapOpts {
@@ -113,6 +151,7 @@ function formatPrice(amount: number): string {
 }
 
 export async function sendSubscriptionActivatedMail(
+  schoolId: string,
   schoolEmail: string,
   schoolName: string,
   plan: 'basic' | 'premium',
@@ -148,10 +187,11 @@ export async function sendSubscriptionActivatedMail(
     ctaHref: `${BASE_URL}/upgrade`,
     ctaColor: '#0D9488',
   });
-  await sendMail(schoolEmail, subject, html);
+  await sendMail(schoolEmail, subject, html, { schoolId, emailType: 'subscription_activated' });
 }
 
 export async function sendRecurringPaymentFailedMail(
+  schoolId: string,
   schoolEmail: string,
   schoolName: string,
   attempt: number,
@@ -169,10 +209,11 @@ export async function sendRecurringPaymentFailedMail(
       <p style="margin:0">Vragen of klopt er iets niet? Mail ons even op <a href="mailto:hallo@ribba.app" style="color:#2563EB;font-weight:600">hallo@ribba.app</a>.</p>
     `,
   });
-  await sendMail(schoolEmail, subject, html);
+  await sendMail(schoolEmail, subject, html, { schoolId, emailType: 'recurring_payment_failed' });
 }
 
 export async function sendSubscriptionSuspendedMail(
+  schoolId: string,
   schoolEmail: string,
   schoolName: string,
 ): Promise<void> {
@@ -191,10 +232,11 @@ export async function sendSubscriptionSuspendedMail(
     ctaHref: `${BASE_URL}/upgrade`,
     ctaColor: '#2563EB',
   });
-  await sendMail(schoolEmail, subject, html);
+  await sendMail(schoolEmail, subject, html, { schoolId, emailType: 'subscription_suspended' });
 }
 
 export async function sendTrialEndingReminderMail(
+  schoolId: string,
   schoolEmail: string,
   schoolName: string,
   daysLeft: number,
@@ -231,5 +273,5 @@ export async function sendTrialEndingReminderMail(
     ctaHref: `${BASE_URL}/upgrade`,
     ctaColor: isUrgent ? '#DC2626' : '#2563EB',
   });
-  await sendMail(schoolEmail, subject, html);
+  await sendMail(schoolEmail, subject, html, { schoolId, emailType: `trial_ending_reminder_${daysLeft}d` });
 }
