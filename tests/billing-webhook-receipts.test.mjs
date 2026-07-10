@@ -172,48 +172,130 @@ test('claim-insert DB-fout → throwt (correctness: zonder claim geen side-effec
   await assert.rejects(() => claimSetupWebhook(CLAIM_PARAMS), /receipt claim insert failed/);
 });
 
-test('advanceReceiptStage schrijft stage + result_subscription_id en throwt bij DB-fout', async () => {
-  currentClient = makeClient([{ data: null, error: null }]);
-  await advanceReceiptStage('rcpt-1', 'subscription_created', 'sub_new');
-  const op = currentClient.calls[0].ops.find(([m]) => m === 'update');
+const TOKEN = '2026-07-10T09:00:00.000Z';
+
+// Helper: verzamel alle eq-condities van de (enige) update-call als object.
+function eqConditions(call) {
+  return Object.fromEntries(call.ops.filter(([m]) => m === 'eq').map(([, col, val]) => [col, val]));
+}
+
+test('advanceReceiptStage: gefenced op token + status + vorige stage; schrijft stage + sub-id in één update', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await advanceReceiptStage('rcpt-1', TOKEN, 'subscription_created', 'sub_new');
+  const call = currentClient.calls[0];
+  const op = call.ops.find(([m]) => m === 'update');
   assert.equal(op[1].side_effect_stage, 'subscription_created');
   assert.equal(op[1].result_subscription_id, 'sub_new');
-
-  currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
-  await assert.rejects(() => advanceReceiptStage('rcpt-1', 'license_updated'), /stage advance/);
+  const conds = eqConditions(call);
+  assert.equal(conds.id, 'rcpt-1');
+  assert.equal(conds.status, 'processing');
+  assert.equal(conds.processing_started_at, TOKEN);
+  assert.equal(conds.side_effect_stage, 'claimed'); // vereiste vórige stage
 });
 
-test('markReceiptSucceeded zet status succeeded + stage completed; throwt bij fout', async () => {
-  currentClient = makeClient([{ data: null, error: null }]);
-  await markReceiptSucceeded('rcpt-1');
-  const op = currentClient.calls[0].ops.find(([m]) => m === 'update');
+test('advanceReceiptStage: license_updated vereist vorige stage subscription_created', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await advanceReceiptStage('rcpt-1', TOKEN, 'license_updated');
+  const conds = eqConditions(currentClient.calls[0]);
+  assert.equal(conds.side_effect_stage, 'subscription_created');
+});
+
+test('advanceReceiptStage: throwt bij DB-fout én bij 0 geraakte rijen (ownership verloren)', async () => {
+  currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
+  await assert.rejects(
+    () => advanceReceiptStage('rcpt-1', TOKEN, 'license_updated'),
+    /stage advance/,
+  );
+
+  // Zombie-run: token matcht niet meer → 0 rijen → throw, geen stille voortgang
+  currentClient = makeClient([{ data: [], error: null }]);
+  await assert.rejects(
+    () => advanceReceiptStage('rcpt-1', TOKEN, 'subscription_created', 'sub_x'),
+    /ownership lost/,
+  );
+});
+
+test('markReceiptSucceeded: atomisch status+stage, gefenced, alleen vanaf license_updated', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await markReceiptSucceeded('rcpt-1', TOKEN);
+  const call = currentClient.calls[0];
+  const op = call.ops.find(([m]) => m === 'update');
   assert.equal(op[1].status, 'succeeded');
   assert.equal(op[1].side_effect_stage, 'completed');
+  const conds = eqConditions(call);
+  assert.equal(conds.status, 'processing');
+  assert.equal(conds.processing_started_at, TOKEN);
+  assert.equal(conds.side_effect_stage, 'license_updated');
+
+  currentClient = makeClient([{ data: [], error: null }]);
+  await assert.rejects(() => markReceiptSucceeded('rcpt-1', TOKEN), /ownership lost/);
 
   currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
-  await assert.rejects(() => markReceiptSucceeded('rcpt-1'), /mark succeeded/);
+  await assert.rejects(() => markReceiptSucceeded('rcpt-1', TOKEN), /mark succeeded/);
 });
 
-test('markReceiptDiscarded zet status discarded, laat stage staan; throwt bij fout', async () => {
-  currentClient = makeClient([{ data: null, error: null }]);
-  await markReceiptDiscarded('rcpt-1');
-  const op = currentClient.calls[0].ops.find(([m]) => m === 'update');
+test('markReceiptDiscarded: alleen vanaf stage claimed, gefenced; laat stage staan', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await markReceiptDiscarded('rcpt-1', TOKEN);
+  const call = currentClient.calls[0];
+  const op = call.ops.find(([m]) => m === 'update');
   assert.equal(op[1].status, 'discarded');
   assert.equal('side_effect_stage' in op[1], false);
+  const conds = eqConditions(call);
+  assert.equal(conds.status, 'processing');
+  assert.equal(conds.processing_started_at, TOKEN);
+  assert.equal(conds.side_effect_stage, 'claimed');
+
+  currentClient = makeClient([{ data: [], error: null }]);
+  await assert.rejects(() => markReceiptDiscarded('rcpt-1', TOKEN), /ownership lost/);
 
   currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
-  await assert.rejects(() => markReceiptDiscarded('rcpt-1'), /mark discarded/);
+  await assert.rejects(() => markReceiptDiscarded('rcpt-1', TOKEN), /mark discarded/);
 });
 
-test('markReceiptFailed is non-throwing (catch-pad-veilig) en slicet de fout', async () => {
+test('markReceiptFailed: non-throwing (catch-pad-contract), gefenced, slicet de fout', async () => {
   // DB-fout → mag NIET throwen; receipt wordt dan vanzelf stale en herclaimbaar
   currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
-  await markReceiptFailed('rcpt-1', 'x'.repeat(1000));
+  await markReceiptFailed('rcpt-1', TOKEN, 'x'.repeat(1000));
 
-  // Succes-pad: status failed + last_error geslicet op 500
-  currentClient = makeClient([{ data: null, error: null }]);
-  await markReceiptFailed('rcpt-1', 'x'.repeat(1000));
-  const op = currentClient.calls[0].ops.find(([m]) => m === 'update');
+  // Zombie-run (0 rijen geraakt) → ook geen throw, en de overnemende run blijft ongemoeid
+  currentClient = makeClient([{ data: [], error: null }]);
+  await markReceiptFailed('rcpt-1', TOKEN, 'boom');
+
+  // Succes-pad: status failed + last_error geslicet op 500, gefenced op token
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await markReceiptFailed('rcpt-1', TOKEN, 'x'.repeat(1000));
+  const call = currentClient.calls[0];
+  const op = call.ops.find(([m]) => m === 'update');
   assert.equal(op[1].status, 'failed');
   assert.equal(op[1].last_error.length, 500);
+  const conds = eqConditions(call);
+  assert.equal(conds.status, 'processing');
+  assert.equal(conds.processing_started_at, TOKEN);
+});
+
+test('herclaim-conditie: alleen failed of stale-processing, en bump raakt status/stage/result niet', async () => {
+  // Herclaim-query bevat de or-conditie op failed / stale processing
+  const failedRow = receiptRow({ status: 'failed', attempt_count: 1 });
+  currentClient = makeClient([
+    { data: [], error: null },
+    { data: failedRow, error: null },
+    { data: [{ ...failedRow, status: 'processing' }], error: null },
+  ]);
+  await claimSetupWebhook(CLAIM_PARAMS);
+  const reclaimCall = currentClient.calls[2];
+  const orOp = reclaimCall.ops.find(([m]) => m === 'or');
+  assert.match(orOp[1], /status\.eq\.failed/);
+  assert.match(orOp[1], /status\.eq\.processing/);
+  assert.match(orOp[1], /processing_started_at\.lt\./);
+
+  // Terminal-bump muteert uitsluitend last_received_at + attempt_count
+  currentClient = makeClient([
+    { data: [], error: null },
+    { data: receiptRow({ status: 'succeeded', attempt_count: 7 }), error: null },
+    { data: null, error: null },
+  ]);
+  await claimSetupWebhook(CLAIM_PARAMS);
+  const bumpOp = currentClient.calls[2].ops.find(([m]) => m === 'update');
+  assert.deepEqual(Object.keys(bumpOp[1]).sort(), ['attempt_count', 'last_received_at']);
 });

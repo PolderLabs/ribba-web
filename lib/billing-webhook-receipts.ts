@@ -148,64 +148,134 @@ export async function claimSetupWebhook(params: {
   return { outcome: 'in_flight' };
 }
 
-/** Stage vooruitzetten; optioneel result_subscription_id vastleggen. Throwt bij fout. */
+// ── Fencing ────────────────────────────────────────────────────────────────
+// Alle mutaties na de claim zijn geconditioneerd op:
+//   status = 'processing'  EN  processing_started_at = <claim-token>
+// Het claim-token is receipt.processing_started_at zoals de gewonnen claim
+// 'm heeft gezet (insert: DB now(); herclaim: onze nowIso). Een zombie-run
+// (traag geworden, waarna een ander de receipt bij staleness heeft
+// overgenomen) heeft een verouderd token, raakt 0 rijen en krijgt een throw
+// — hij kan de voortgang van de overnemende run dus nooit overschrijven.
+// Terminale receipts (succeeded/discarded) zijn hierdoor ook onmuteerbaar
+// via deze functies: status is dan niet meer 'processing'.
+
+// Toegestane voorgaande stage per doel-stage — dwingt de volgorde
+// claimed → subscription_created → license_updated af.
+const STAGE_PRECONDITION: Record<'subscription_created' | 'license_updated', SideEffectStage> = {
+  subscription_created: 'claimed',
+  license_updated: 'subscription_created',
+};
+
+/**
+ * Stage vooruitzetten; optioneel result_subscription_id in dezelfde update.
+ * Conditioneel op ownership (claim-token) + de verwachte huidige stage.
+ * Throwt bij DB-fout én bij 0 geraakte rijen (ownership verloren of
+ * onverwachte staat) — de caller hoort dan te stoppen met side-effects.
+ */
 export async function advanceReceiptStage(
   receiptId: string,
-  stage: SideEffectStage,
+  claimToken: string,
+  stage: 'subscription_created' | 'license_updated',
   resultSubscriptionId?: string,
 ): Promise<void> {
   const update: Record<string, unknown> = { side_effect_stage: stage };
   if (resultSubscriptionId !== undefined) {
     update.result_subscription_id = resultSubscriptionId;
   }
-  const { error } = await getSupabase()
+  const { data, error } = await getSupabase()
     .from('billing_webhook_receipts')
     .update(update)
-    .eq('id', receiptId);
+    .eq('id', receiptId)
+    .eq('status', 'processing')
+    .eq('processing_started_at', claimToken)
+    .eq('side_effect_stage', STAGE_PRECONDITION[stage])
+    .select();
   if (error) {
     throw new Error(`receipt stage advance (${stage}) failed: ${error.message}`);
   }
+  if (!data || data.length === 0) {
+    throw new Error(`receipt stage advance (${stage}): ownership lost or unexpected state`);
+  }
 }
 
-/** Terminaal succes: status succeeded + stage completed. Throwt bij fout. */
-export async function markReceiptSucceeded(receiptId: string): Promise<void> {
-  const { error } = await getSupabase()
+/**
+ * Terminaal succes: status succeeded + stage completed, in één update.
+ * Conditioneel op ownership + stage license_updated. Throwt bij fout of 0 rijen.
+ */
+export async function markReceiptSucceeded(receiptId: string, claimToken: string): Promise<void> {
+  const { data, error } = await getSupabase()
     .from('billing_webhook_receipts')
     .update({ status: 'succeeded', side_effect_stage: 'completed' })
-    .eq('id', receiptId);
+    .eq('id', receiptId)
+    .eq('status', 'processing')
+    .eq('processing_started_at', claimToken)
+    .eq('side_effect_stage', 'license_updated')
+    .select();
   if (error) {
     throw new Error(`receipt mark succeeded failed: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error('receipt mark succeeded: ownership lost or unexpected state');
   }
 }
 
 /**
  * Retriable failure: status failed, stage blijft staan (recovery weet dan waar
- * de run strandde). NIET throwing — wordt aangeroepen vanuit catch-paden waar een
- * tweede throw de foutafhandeling zou verstoren; als deze write faalt, wordt de
- * receipt vanzelf stale-processing en pakt de herclaim 'm later op.
+ * de run strandde).
+ *
+ * BEWUST non-throwing, als enige mutatie-functie. Contract:
+ *   - mag UITSLUITEND vanuit catch-paden worden aangeroepen, nadat de primaire
+ *     fout al vaststaat en de caller al besloten heeft 500 te retourneren;
+ *   - de 500-beslissing hangt af van de primaire fout, nooit van deze write —
+ *     een mislukte failed-markering kan de 200/500-keuze dus niet beïnvloeden;
+ *   - faalt de write, dan blijft de receipt processing en wordt hij na de
+ *     staleness-drempel vanzelf herclaimbaar (zelfde herstel, iets later).
+ * Wel gefenced op het claim-token: een zombie-run kan een receipt die
+ * inmiddels door een ander is overgenomen (of terminaal is) niet op failed
+ * zetten.
  */
-export async function markReceiptFailed(receiptId: string, error: string): Promise<void> {
+export async function markReceiptFailed(
+  receiptId: string,
+  claimToken: string,
+  error: string,
+): Promise<void> {
   try {
-    const { error: dbError } = await getSupabase()
+    const { data, error: dbError } = await getSupabase()
       .from('billing_webhook_receipts')
       .update({ status: 'failed', last_error: error.slice(0, 500) })
-      .eq('id', receiptId);
+      .eq('id', receiptId)
+      .eq('status', 'processing')
+      .eq('processing_started_at', claimToken)
+      .select();
     if (dbError) {
       console.error('receipt mark failed write error:', dbError.message);
+    } else if (!data || data.length === 0) {
+      console.warn('receipt mark failed: ownership lost — receipt ongemoeid gelaten');
     }
   } catch (e) {
     console.error('receipt mark failed unexpected error:', e);
   }
 }
 
-/** Terminaal genegeerd (stale/foreign payment): status discarded, stage blijft. Throwt. */
-export async function markReceiptDiscarded(receiptId: string): Promise<void> {
-  const { error } = await getSupabase()
+/**
+ * Terminaal genegeerd (stale/foreign payment): status discarded, stage blijft.
+ * Alleen geldig vanuit stage 'claimed' (vóór enige side-effect), conditioneel
+ * op ownership. Throwt bij fout of 0 rijen.
+ */
+export async function markReceiptDiscarded(receiptId: string, claimToken: string): Promise<void> {
+  const { data, error } = await getSupabase()
     .from('billing_webhook_receipts')
     .update({ status: 'discarded' })
-    .eq('id', receiptId);
+    .eq('id', receiptId)
+    .eq('status', 'processing')
+    .eq('processing_started_at', claimToken)
+    .eq('side_effect_stage', 'claimed')
+    .select();
   if (error) {
     throw new Error(`receipt mark discarded failed: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error('receipt mark discarded: ownership lost or unexpected state');
   }
 }
 
