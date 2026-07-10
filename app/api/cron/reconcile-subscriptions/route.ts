@@ -69,18 +69,7 @@ export async function GET(request: NextRequest) {
         startDate: startDateStr,
         description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
         webhookUrl: `${baseUrl}/api/mollie-webhook`,
-        // Geen setup_payment_id beschikbaar in de cron-context; source-marker
-        // maakt in Mollie zichtbaar dat deze sub uit reconciliatie komt.
-        metadata: JSON.stringify({
-          school_id: license.school_id,
-          plan,
-          type: 'recurring',
-          source: 'reconcile-cron',
-        }),
-        // Mollie replayt de eerdere response bij dezelfde key — voorkomt een
-        // dubbele subscription als de cron-run crasht ná create en de volgende
-        // nachtelijke run dezelfde license opnieuw oppakt binnen het key-window.
-        idempotencyKey: `reconcile-${license.id}`,
+        metadata: JSON.stringify({ school_id: license.school_id, plan, type: 'recurring' }),
       });
 
       await getSupabase()
