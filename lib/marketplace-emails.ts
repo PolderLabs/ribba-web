@@ -187,6 +187,46 @@ export async function sendRijschoolOutreachMail(input: OutreachMailInput): Promi
   );
 }
 
+export interface LeerlingBevestigingInput {
+  to: string;
+  leerlingFullName: string;
+  schoolNames: string[];
+}
+
+// Bevestigingsmail naar de leerling direct na de submit: verwachtingen
+// zetten ("rijscholen reageren meestal binnen 24 uur") en het eerste
+// contactmoment — zo landt de latere reply-notificatie niet koud in spam.
+export async function sendLeerlingBevestigingMail(input: LeerlingBevestigingInput): Promise<boolean> {
+  const voornaam = anonymizedFirstName(input.leerlingFullName);
+  const count = input.schoolNames.length;
+  const lijst = input.schoolNames
+    .map((n) => `<li style="margin:4px 0">${escapeHtml(n)}</li>`)
+    .join('');
+
+  const html = wrap({
+    pillLabel: 'Aanvraag verzonden',
+    pillBg: '#CCFBF1',
+    pillColor: '#134E4A',
+    title: `Je aanvraag is onderweg, ${voornaam}!`,
+    bodyHtml: `
+      <p style="margin:0 0 12px">We hebben je aanvraag doorgestuurd naar ${count === 1 ? 'deze rijschool' : `deze ${count} rijscholen`}:</p>
+      <ul style="margin:0 0 16px;padding-left:20px;font-size:14px;color:#0F172A">${lijst}</ul>
+      <p style="margin:0 0 12px">Rijscholen reageren meestal <strong>binnen 24 uur</strong>. Zodra een rijschool antwoordt, krijg je van ons een e-mail met een link naar de beveiligde chat — geen account of app nodig.</p>
+      <p style="margin:0;font-size:13px;color:#64748B">Tip: houd ook je spam-map in de gaten, zodat je geen reactie mist.</p>
+    `,
+    footerHtml: `Je ontvangt dit bericht omdat je via ribba.app een informatie-aanvraag verstuurde.<br>`,
+  });
+
+  return sendMail(
+    input.to,
+    count === 1
+      ? 'Je aanvraag is verstuurd — Ribba'
+      : `Je aanvraag is verstuurd naar ${count} rijscholen — Ribba`,
+    html,
+    'leerling_bevestiging',
+  );
+}
+
 export interface ReplyNotificationInput {
   to: string;
   senderName: string;     // geanonimiseerd: voornaam leerling of rijschoolnaam

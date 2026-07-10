@@ -8,7 +8,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { isValidEmail, isValidInternationalPhone } from '@/utils/validation';
 import { corsHeaders, corsPreflight } from '@/lib/cors';
 import { getServiceClient, getCbrRijscholen } from '@/lib/marketplace-db';
-import { sendRijschoolOutreachMail } from '@/lib/marketplace-emails';
+import { sendRijschoolOutreachMail, sendLeerlingBevestigingMail } from '@/lib/marketplace-emails';
 
 export const maxDuration = 60;
 
@@ -57,9 +57,12 @@ export async function POST(request: NextRequest) {
     : null;
   const categorie = body.rijbewijs_categorie;
   const schakeling = body.schakeling ?? null;
+  // Mag client-side gesynthetiseerd zijn: de ContactForm vertaalt zsm/+1m/+3m
+  // naar een concrete datum en "later" naar null.
   const startdatum = typeof body.gewenste_startdatum === 'string' && body.gewenste_startdatum !== ''
     ? body.gewenste_startdatum
     : null;
+  const marketingOptin = body.marketing_optin === true;
   const opleidingsvoorkeur = typeof body.opleidingsvoorkeur === 'string' && body.opleidingsvoorkeur.trim() !== ''
     ? body.opleidingsvoorkeur.trim().slice(0, 500)
     : null;
@@ -115,6 +118,31 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
+    // Dedupe: rijscholen die dit e-mailadres < 24u geleden al aanschreef
+    // overslaan (rate limiting per IP dekt geen roterende IP's).
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentRows, error: dedupeError } = await supabase
+      .from('inquiry_recipients')
+      .select('rijschool_id, inquiries!inner(leerling_email)')
+      .in('rijschool_id', rijschoolIds)
+      .gte('created_at', dayAgo)
+      .eq('inquiries.leerling_email', leerlingEmail);
+    if (dedupeError) {
+      console.error('inquiry-submit: dedupe query failed', dedupeError);
+      return NextResponse.json(
+        { error: 'Er ging iets mis. Probeer het opnieuw.' },
+        { status: 500, headers },
+      );
+    }
+    const recentIds = new Set((recentRows ?? []).map((r) => r.rijschool_id as number));
+    const freshIds = rijschoolIds.filter((id) => !recentIds.has(id));
+    if (freshIds.length === 0) {
+      return NextResponse.json(
+        { error: 'Je hebt deze rijscholen de afgelopen 24 uur al een aanvraag gestuurd.' },
+        { status: 409, headers },
+      );
+    }
+
     const { data: inquiry, error: inquiryError } = await supabase
       .from('inquiries')
       .insert({
@@ -127,6 +155,7 @@ export async function POST(request: NextRequest) {
         opleidingsvoorkeur,
         bericht,
         source_page: sourcePage,
+        marketing_optin: marketingOptin,
       })
       .select('id')
       .single();
@@ -141,7 +170,7 @@ export async function POST(request: NextRequest) {
 
     const { data: recipients, error: recipientsError } = await supabase
       .from('inquiry_recipients')
-      .insert(rijschoolIds.map((rijschoolId) => ({
+      .insert(freshIds.map((rijschoolId) => ({
         inquiry_id: inquiry.id,
         rijschool_id: rijschoolId,
       })))
@@ -157,11 +186,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Outreach ná de response: de leerling hoeft niet op 10 Resend-calls te
-    // wachten. Eén mislukte mail laat de recipient op 'pending' staan
-    // (zichtbaar in de data; retry is een follow-up van de notificatie-cron).
+    // Outreach + leerling-bevestiging ná de response: de leerling hoeft niet
+    // op 10+ Resend-calls te wachten. Eén mislukte mail laat de recipient op
+    // 'pending' staan (zichtbaar in de data; retry is een follow-up van de
+    // notificatie-cron).
     after(async () => {
       const schoolById = new Map(schools.map((s) => [s.id, s]));
+
+      // Bevestigingsmail naar de leerling: verwachtingen zetten + het eerste
+      // contactmoment (warmt de mailbox op vóór de reply-notificaties).
+      try {
+        await sendLeerlingBevestigingMail({
+          to: leerlingEmail,
+          leerlingFullName: leerlingName,
+          schoolNames: recipients
+            .map((r) => schoolById.get(r.rijschool_id)?.name)
+            .filter((n): n is string => !!n),
+        });
+      } catch (err) {
+        console.error('inquiry-submit: leerling-bevestiging failed', err);
+      }
+
       for (const recipient of recipients) {
         const school = schoolById.get(recipient.rijschool_id);
         if (!school?.email) {

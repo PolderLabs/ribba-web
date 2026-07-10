@@ -17,8 +17,6 @@ export type InquiryRecipientStatus =
 
 export type ChatRole = 'leerling' | 'rijschool';
 
-export type UserProfileRole = 'leerling' | 'rijschool' | 'admin';
-
 export interface InquiryRow {
   id: string;
   leerling_user_id: string | null;
@@ -27,10 +25,11 @@ export interface InquiryRow {
   leerling_name: string;
   rijbewijs_categorie: RijbewijsCategorie;
   schakeling: Schakeling | null;
-  gewenste_startdatum: string | null; // ISO date
+  gewenste_startdatum: string | null; // ISO date; mag client-side gesynthetiseerd zijn (zsm/+1m/+3m → datum, "later" → null)
   opleidingsvoorkeur: string | null;
   bericht: string | null;
   source_page: string | null;
+  marketing_optin: boolean;
   toestemming_at: string;
   created_at: string;
 }
@@ -40,9 +39,13 @@ export interface InquiryRecipientRow {
   inquiry_id: string;
   rijschool_id: number;
   rijschool_user_id: string | null;
+  school_id: string | null; // uuid → drivingschools, gevuld ná KvK-claim/approval
   status: InquiryRecipientStatus;
+  opened_at: string | null;
   accepted_at: string | null;
   declined_at: string | null;
+  decline_reason: string | null;
+  expires_at: string;
   notification_email_sent_at: string | null;
   notification_sms_sent_at: string | null;
   notified_email: string | null;
@@ -59,7 +62,9 @@ export interface ConversationRow {
   leerling_user_id: string | null; // null tot de leerling zijn kant claimt
   rijschool_user_id: string;
   rijschool_id: number;
+  school_id: string | null;
   last_message_at: string | null;
+  last_message_preview: string | null;
   leerling_last_notified_at: string | null;
   rijschool_last_notified_at: string | null;
   created_at: string;
@@ -75,13 +80,32 @@ export interface MessageRow {
   created_at: string;
 }
 
-export interface UserProfileRow {
+export interface MarketplaceProfileRow {
   user_id: string;
-  role: UserProfileRole;
-  full_name: string | null;
-  phone: string | null;
-  rijschool_id: number | null;
-  expo_push_token: string | null;
+  marketplace_role: ChatRole;
   email_notifications: boolean;
   created_at: string;
+}
+
+// Retour-shape van de gedeelde RPC get_chat_context(p_token) — identiek
+// contract voor de web-chat gateway en de ribbaPro-app.
+export interface ChatContext {
+  found: boolean;
+  role: ChatRole;
+  inquiry_id: string;
+  recipient_id: string;
+  conversation_id: string | null;
+  status: InquiryRecipientStatus;
+  claimed: boolean;
+  expected_email_masked: string | null;
+  counterpart_name: string;
+  inquiry_preview: {
+    voornaam: string;
+    rijbewijs_categorie: RijbewijsCategorie;
+    schakeling: Schakeling | null;
+    gewenste_startdatum: string | null;
+    bericht: string | null;
+    created_at: string;
+  };
+  contact: { name: string; email: string; phone: string | null } | null;
 }

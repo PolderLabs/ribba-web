@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient, getCbrRijscholen } from '@/lib/marketplace-db';
 import { sendReplyNotificationMail, anonymizedFirstName } from '@/lib/marketplace-emails';
-import type { ChatRole, MessageRow, UserProfileRow } from '@/lib/marketplace-types';
+import type { ChatRole, MessageRow } from '@/lib/marketplace-types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -76,20 +76,36 @@ export async function GET(request: NextRequest) {
 
   const conversations = (candidates ?? []) as unknown as ConversationJoin[];
 
-  // Profielen in bulk ophalen (push-token + e-mailvoorkeur).
+  // E-mailvoorkeuren + push-status in bulk. Push-status komt uit de bestaande
+  // multi-device `push_tokens`-tabel die de app onderhoudt (SSoT) — wie daar
+  // een device heeft, krijgt push via ribbaPro#144 en dus géén e-mail.
   const userIds = [
     ...new Set(
       conversations.flatMap((c) => [c.leerling_user_id, c.rijschool_user_id]).filter((id): id is string => !!id),
     ),
   ];
-  const profiles = new Map<string, Pick<UserProfileRow, 'expo_push_token' | 'email_notifications'>>();
+  const emailPrefs = new Map<string, boolean>();
+  const usersWithPush = new Set<string>();
   if (userIds.length > 0) {
     const { data: profileRows } = await supabase
-      .from('user_profiles')
-      .select('user_id, expo_push_token, email_notifications')
+      .from('marketplace_profiles')
+      .select('user_id, email_notifications')
       .in('user_id', userIds);
     for (const p of profileRows ?? []) {
-      profiles.set(p.user_id, p);
+      emailPrefs.set(p.user_id, p.email_notifications);
+    }
+
+    const { data: pushRows, error: pushError } = await supabase
+      .from('push_tokens')
+      .select('user_id')
+      .in('user_id', userIds);
+    if (pushError) {
+      // Tabel(naam) niet beschikbaar → conservatief: niemand als push-gedekt
+      // beschouwen (liever een dubbele notificatie dan geen enkele).
+      console.warn('chat-notifications: push_tokens lookup failed', pushError.message);
+    }
+    for (const p of pushRows ?? []) {
+      usersWithPush.add(p.user_id);
     }
   }
 
@@ -153,17 +169,14 @@ export async function GET(request: NextRequest) {
           continue;
         }
         if (sideUserId) {
-          const profile = profiles.get(sideUserId);
-          if (profile) {
-            // Actieve push in de app → geen dubbele e-mail (ribbaPro#144 dekt push).
-            if (profile.expo_push_token) {
-              skipped++;
-              continue;
-            }
-            if (!profile.email_notifications) {
-              skipped++;
-              continue;
-            }
+          // Actieve push in de app → geen dubbele e-mail (ribbaPro#144 dekt push).
+          if (usersWithPush.has(sideUserId)) {
+            skipped++;
+            continue;
+          }
+          if (emailPrefs.get(sideUserId) === false) {
+            skipped++;
+            continue;
           }
         }
         // Ongeclaimde leerling (geen user_id): altijd mailen — dit is de stap

@@ -13,7 +13,8 @@
           { "/": "/payment/success" },
           { "/": "/join/*" },
           { "/": "/reset" },
-          { "/": "/reset/*" }
+          { "/": "/reset/*" },
+          { "/": "/chat/*", "comment": "marketplace web-chat: met app geïnstalleerd opent de mail-link de app (ribbaPro#139)" }
         ]
       }
     ]

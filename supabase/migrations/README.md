@@ -22,12 +22,20 @@ supabase db push
 
 ## Aandachtspunten
 
-- `20260711000000_marketplace_mvp.sql` gaat ervan uit dat `cbr_rijscholen`
-  bestaat met een **integer** primary key. Is de PK `bigint`, pas dan de
-  `rijschool_id`-kolommen in de migratie aan vóór het draaien.
-- De migratie bevat bewuste afwijkingen t.o.v. de draft in issue #36 — zie de
-  header van het bestand. Communiceer die naar het ribbaPro-team (issues
-  #139/#140/#141 bouwen tegen dit schema).
+- `20260711000000_marketplace_mvp.sql` implementeert het schema-contract uit
+  het ribbaPro-review (ribba.app#36#issuecomment-4933108256): o.a.
+  `marketplace_profiles` i.p.v. `user_profiles`, gedeelde claim-RPC's
+  (`claim_inquiry` / `claim_inquiry_recipient`), server-side masking
+  (`get_chat_context` / `get_inquiry_for_recipient`) en `mark_messages_read`
+  als enige schrijfpad voor read-receipts. Zie de header van het bestand voor
+  alle contract- (C1–C6) en design-beslissingen (D2–D6).
+- `cbr_rijscholen` bestaat in het gedeelde project (integer PK, kolommen
+  `email` + `kvk` aanwezig) maar had bij de contract-review **0 rijen** —
+  vullen is een voorwaarde voor de funnel én voor de e-mail-match bij de
+  rijschool-claim.
+- De cron `chat-notifications` leest de bestaande `push_tokens`-tabel van de
+  app (kolom `user_id` aangenomen) voor push/e-mail-dedupe — check de
+  kolomnaam bij het eerste draaien.
 - Voor de web-chat gate (#42) moet in het dashboard de **e-mail OTP-flow**
   aanstaan: Auth → Email Templates → "Magic Link" template moet `{{ .Token }}`
   bevatten (anders krijgen gebruikers alleen een link, geen 6-cijferige code).

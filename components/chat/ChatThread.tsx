@@ -10,8 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { AppStoreBadge, GooglePlayBadge } from '@/app/components/StoreBadges';
 import MessageComposer from './MessageComposer';
-import type { ChatRole, InquiryRecipientStatus, MessageRow } from '@/lib/marketplace-types';
-import type { ResolveInfo } from './ChatGateway';
+import type { ChatContext, ChatRole, InquiryRecipientStatus, MessageRow } from '@/lib/marketplace-types';
 
 interface ChatThreadProps {
   supabase: SupabaseClient;
@@ -19,8 +18,8 @@ interface ChatThreadProps {
   role: ChatRole;
   counterpartName: string;
   status: InquiryRecipientStatus;
-  inquiryPreview: ResolveInfo['inquiry_preview'];
-  contact: ResolveInfo['contact'];
+  inquiryPreview: ChatContext['inquiry_preview'];
+  contact: ChatContext['contact'];
 }
 
 function formatTime(iso: string): string {
@@ -47,14 +46,11 @@ export default function ChatThread({
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const counterpartRole: ChatRole = role === 'leerling' ? 'rijschool' : 'leerling';
 
+  // read_at kan alleen via de gedeelde RPC gezet worden (geen client-UPDATE
+  // op messages) — zelfde pad als de ribbaPro-app straks gebruikt.
   const markRead = useCallback(async () => {
-    await supabase
-      .from('messages')
-      .update({ read_at: new Date().toISOString() })
-      .eq('conversation_id', conversationId)
-      .eq('sender_role', counterpartRole)
-      .is('read_at', null);
-  }, [supabase, conversationId, counterpartRole]);
+    await supabase.rpc('mark_messages_read', { p_conversation_id: conversationId });
+  }, [supabase, conversationId]);
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null;

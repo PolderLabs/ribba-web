@@ -3,32 +3,19 @@
 // Web-chat gateway (issue ribba.app#42): vangt de link uit de outreach-/
 // reply-mail op, gate't op e-mailverificatie (Supabase OTP) en plaatst de
 // geverifieerde gebruiker in de geanonimiseerde 1-op-1 chat.
+//
+// Alle chat-semantiek loopt via de gedeelde SECURITY DEFINER RPC's uit de
+// marketplace-migratie (get_chat_context / claim_inquiry /
+// claim_inquiry_recipient) — exact hetzelfde contract als de ribbaPro-app,
+// zodat web en app nooit uit elkaar kunnen lopen.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import RibbaLogo from '@/app/components/RibbaLogo';
 import OtpGate from './OtpGate';
 import ChatThread from './ChatThread';
-import type { ChatRole, InquiryRecipientStatus } from '@/lib/marketplace-types';
-
-export interface ResolveInfo {
-  role: ChatRole;
-  status: InquiryRecipientStatus;
-  claimed: boolean;
-  conversation_id: string | null;
-  expected_email_masked: string;
-  counterpart_name: string;
-  inquiry_preview: {
-    voornaam: string;
-    rijbewijs_categorie: string;
-    schakeling: string | null;
-    gewenste_startdatum: string | null;
-    bericht: string | null;
-    created_at: string;
-  };
-  contact: { name: string; email: string; phone: string | null } | null;
-}
+import type { ChatContext } from '@/lib/marketplace-types';
 
 type Phase =
   | 'resolving'
@@ -51,44 +38,70 @@ function getSupabase(): SupabaseClient {
   return browserClient;
 }
 
+// SQLSTATE 28000 = e-mail-mismatch / niet ingelogd in de claim-RPC's.
+function isEmailMismatch(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === '28000' || (error?.message ?? '').includes('komt niet overeen');
+}
+
 export default function ChatGateway({ token }: { token: string }) {
   const [phase, setPhase] = useState<Phase>('resolving');
-  const [info, setInfo] = useState<ResolveInfo | null>(null);
+  const [info, setInfo] = useState<ChatContext | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [mismatchEmail, setMismatchEmail] = useState<string | null>(null);
   const claimInFlight = useRef(false);
 
-  const claim = useCallback(async (session: Session): Promise<void> => {
+  const claim = useCallback(async (context: ChatContext): Promise<void> => {
     if (claimInFlight.current) return;
     claimInFlight.current = true;
     setPhase('claiming');
+    const supabase = getSupabase();
     try {
-      const res = await fetch('/api/chat/claim', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ token }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.status === 403) {
-        // Ingelogd met een ander adres dan waar de mail heen ging.
-        setMismatchEmail(session.user.email ?? null);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         setPhase('otp');
         return;
       }
-      if (!res.ok) {
-        setErrorMsg(data.error ?? 'Er ging iets mis.');
-        setPhase('error');
+
+      if (context.role === 'rijschool') {
+        const { data, error } = await supabase.rpc('claim_inquiry_recipient', {
+          p_recipient_id: context.recipient_id,
+        });
+        if (error) {
+          if (isEmailMismatch(error)) {
+            setMismatchEmail(session.user.email ?? null);
+            setPhase('otp');
+          } else {
+            setErrorMsg('Er ging iets mis bij het openen van de chat.');
+            setPhase('error');
+          }
+          return;
+        }
+        setConversationId(data?.conversation_id ?? null);
+        setPhase(data?.conversation_id ? 'chat' : 'error');
         return;
       }
-      if (data.conversation_id) {
-        setConversationId(data.conversation_id);
+
+      // role === 'leerling'
+      const { error } = await supabase.rpc('claim_inquiry', {
+        p_inquiry_id: context.inquiry_id,
+      });
+      if (error) {
+        if (isEmailMismatch(error)) {
+          setMismatchEmail(session.user.email ?? null);
+          setPhase('otp');
+        } else {
+          setErrorMsg('Er ging iets mis bij het openen van de chat.');
+          setPhase('error');
+        }
+        return;
+      }
+      if (context.conversation_id) {
+        setConversationId(context.conversation_id);
         setPhase('chat');
       } else {
+        // Rijschool heeft de chat nog nooit geopend — kan alleen via een
+        // verouderde link (reply-mails bestaan pas ná een rijschool-bericht).
         setPhase('waiting');
       }
     } catch {
@@ -97,27 +110,23 @@ export default function ChatGateway({ token }: { token: string }) {
     } finally {
       claimInFlight.current = false;
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     (async () => {
-      const res = await fetch('/api/chat/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      }).catch(() => null);
+      const supabase = getSupabase();
+      const { data, error } = await supabase.rpc('get_chat_context', { p_token: token });
 
-      if (!res || !res.ok) {
+      if (error || !data?.found) {
         setPhase('invalid');
         return;
       }
-      const data: ResolveInfo = await res.json();
-      setInfo(data);
+      const context = data as ChatContext;
+      setInfo(context);
 
-      const supabase = getSupabase();
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        await claim(session);
+        await claim(context);
       } else {
         setPhase('otp');
       }
@@ -163,7 +172,8 @@ export default function ChatGateway({ token }: { token: string }) {
           <h1>Verifieer je e-mailadres</h1>
           <p className="chat-muted">
             Om de chat met <strong>{info.counterpart_name}</strong> te openen, verifieer je het
-            e-mailadres waarop je deze uitnodiging ontving ({info.expected_email_masked}).
+            e-mailadres waarop je deze uitnodiging ontving
+            {info.expected_email_masked ? ` (${info.expected_email_masked})` : ''}.
           </p>
           {mismatchEmail && (
             <div className="alert-error" role="alert">
@@ -175,7 +185,7 @@ export default function ChatGateway({ token }: { token: string }) {
           )}
           <OtpGate
             supabase={getSupabase()}
-            onVerified={(session) => { void claim(session); }}
+            onVerified={() => { void claim(info); }}
           />
         </div>
       </div>

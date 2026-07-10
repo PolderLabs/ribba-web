@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     }
     if (sideUserId) {
       await supabase
-        .from('user_profiles')
+        .from('marketplace_profiles')
         .update({ email_notifications: false })
         .eq('user_id', sideUserId);
     }
