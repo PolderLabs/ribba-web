@@ -176,8 +176,12 @@ export async function POST(request: NextRequest) {
       //      subscription die NA deze payment is geactiveerd.
       // Beide: discarded + audit + 200, bewust zonder admin-notify.
       // Een legitieme planwissel (nieuwe payment-id, ander plan) passeert:
-      // plan ≠ license.billing_plan maakt staleDuplicate false. ──
-      if (!claim.recovered && stage === 'claimed') {
+      // plan ≠ license.billing_plan maakt staleDuplicate false.
+      // Draait op ELKE claim in stage 'claimed' — óók recovered: als de eerste
+      // run vóór deze gate strandde (bv. license-lookup-fout → failed), zou de
+      // retry anders langs de gate naar subscription-create vallen. Voor
+      // legitieme retries is de gate een no-op (zelfde customer, geen stale). ──
+      if (stage === 'claimed') {
         const licenseCustomerId = license.mollie_customer_id ?? null;
         const foreignCustomer = Boolean(
           licenseCustomerId && payment.customerId && payment.customerId !== licenseCustomerId,

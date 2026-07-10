@@ -584,6 +584,31 @@ test('T16: foreign customer → discarded + setup_webhook_discarded + 200, geen 
   assert.equal(conds.side_effect_stage, 'claimed');
 });
 
+// 16b (CodeRabbit Major op 868a487): freshness-gate moet óók draaien op
+// recovered claims in stage 'claimed' — eerste run strandde vóór de gate
+// (license-lookup-fout → failed), retry mag niet langs de gate naar create.
+test('T16b: recovered+claimed foreign payment → gate draait alsnog → discarded + 200, geen create', async () => {
+  resetSpies();
+  const payment = paymentFake({ id: 'tr_HIST3', customerId: 'cst_OUD' });
+  mollie = makeMollie({ payment });
+  const failedReceipt = receiptRow({ external_event_id: 'tr_HIST3', status: 'failed', side_effect_stage: 'claimed' });
+  currentClient = makeClient([
+    OK_SCHOOL,
+    { data: [], error: null },                                            // upsert: conflict
+    { data: failedReceipt, error: null },                                 // fetch failed
+    { data: [{ ...failedReceipt, status: 'processing' }], error: null },  // herclaim wint → recovered
+    { data: licenseRow({ mollie_customer_id: 'cst_NIEUW', external_subscription_id: 'sub_ACTIEF', billing_plan: 'basic' }), error: null },
+    { data: [receiptRow()], error: null },                                // markDiscarded
+  ]);
+  const res = await POST(reqFor(payment));
+  assert.equal(res.status, 200);
+  assert.equal(mollie.calls.create.length, 0);
+  assert.equal(mollie.calls.page.length, 0); // gate slaat toe vóór de consult
+  assert.equal(adminNotifyCalls.length, 0);
+  const ev = billingEvents.find((e) => e.event_type === 'setup_webhook_discarded');
+  assert.equal(ev.payload.reason, 'foreign_customer');
+});
+
 // 17: historische payment, zelfde customer/plan, ouder dan huidige activatie
 test('T17: stale duplicate (zelfde plan, oudere payment) → discarded + 200', async () => {
   resetSpies();
