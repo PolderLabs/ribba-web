@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --experimental-test-module-mocks --test \"tests/**/*.test.mjs\""
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --import ./tests/_register-alias.mjs --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "@mollie/api-client": "^4.4.0",
