@@ -213,6 +213,9 @@ test('T1/T8: eerste delivery → claim, create met setup_payment_id + idempotenc
   assert.equal(activatedMailCalls.length, 1);
   assert.equal(adminNotifyCalls.filter((c) => c.t === 'subscription_activated').length, 1);
 
+  // B1-gate: eerste betaling zonder replaces_subscription_id → géén cancel
+  assert.equal(mollie.calls.cancel.length, 0);
+
   // Audit: subscription_created, géén recovered/ignored/discarded
   assert.ok(eventTypes().includes('subscription_created'));
   assert.ok(!eventTypes().includes('setup_webhook_recovered'));
@@ -232,6 +235,7 @@ test('T2: retry op succeeded receipt → no-op, ignored-event, 200, geen create/
   const res = await POST(reqFor(payment));
   assert.equal(res.status, 200);
   assert.equal(mollie.calls.create.length, 0);
+  assert.equal(mollie.calls.cancel.length, 0); // terminale redelivery: nooit een cancel
   assert.equal(activatedMailCalls.length, 0);
   assert.equal(adminNotifyCalls.length, 0);
   assert.deepEqual(eventTypes(), ['ignored_duplicate_setup_webhook']);
@@ -251,6 +255,7 @@ test('T3: discarded backfill receipt → no-op + 200, geen admin-notify', async 
   const res = await POST(reqFor(payment));
   assert.equal(res.status, 200);
   assert.equal(mollie.calls.create.length, 0);
+  assert.equal(mollie.calls.cancel.length, 0); // terminale redelivery: nooit een cancel
   assert.equal(adminNotifyCalls.length, 0);
   const ev = billingEvents.find((e) => e.event_type === 'ignored_duplicate_setup_webhook');
   assert.equal(ev.payload.receipt_status, 'discarded');
@@ -410,9 +415,12 @@ test('T10b: recovery@claimed, consult leeg → create met idempotencyKey, recove
 });
 
 // 11 + 19: recovery vanaf subscription_created
-test('T11: recovery@subscription_created → nooit create; alleen license update + succeeded', async () => {
+test('T11: recovery@subscription_created → nooit create; license update + cancel (deze run voert de setup door) + succeeded', async () => {
   resetSpies();
-  const payment = paymentFake();
+  // Mét replaces: de eerste run crashte vóór de license-update, dus ook vóór de
+  // cancel — de recovery-run die de license-update WEL uitvoert, moet de oude
+  // sub alsnog cancelen (gate: ranLicenseUpdateThisRun).
+  const payment = paymentFake({ metaOverrides: { replaces_subscription_id: 'sub_OLD' } });
   mollie = makeMollie({ payment });
   const r = receiptRow({ status: 'failed', side_effect_stage: 'subscription_created', result_subscription_id: 'sub_X' });
   currentClient = makeClient([
@@ -431,12 +439,16 @@ test('T11: recovery@subscription_created → nooit create; alleen license update
   assert.equal(mollie.calls.create.length, 0);
   assert.equal(mollie.calls.page.length, 0);  // geen consult nodig: sub-id in receipt
   assert.equal(mollie.calls.get.length, 1);   // wel startDate ophalen voor period_end
+  assert.equal(mollie.calls.cancel.length, 1); // cancel hoort bij deze run
+  assert.equal(mollie.calls.cancel[0][0], 'sub_OLD');
 });
 
 // 12 + 18: recovery vanaf license_updated
-test('T12: recovery@license_updated → alleen markSucceeded; geen create/update/mails', async () => {
+test('T12: recovery@license_updated → alleen markSucceeded; geen create/update/mails, GEEN tweede cancel', async () => {
   resetSpies();
-  const payment = paymentFake();
+  // Mét replaces: recovery vanaf license_updated mag nooit opnieuw cancelen
+  // (stage-regel G; ranLicenseUpdateThisRun blijft false in deze run).
+  const payment = paymentFake({ metaOverrides: { replaces_subscription_id: 'sub_OLD' } });
   mollie = makeMollie({ payment });
   const r = receiptRow({ status: 'failed', side_effect_stage: 'license_updated', result_subscription_id: 'sub_X' });
   currentClient = makeClient([
@@ -451,6 +463,7 @@ test('T12: recovery@license_updated → alleen markSucceeded; geen create/update
   const res = await POST(reqFor(payment));
   assert.equal(res.status, 200);
   assert.equal(mollie.calls.create.length, 0);
+  assert.equal(mollie.calls.cancel.length, 0); // geen tweede cancel
   assert.equal(activatedMailCalls.length, 0); // wasAlreadyActivated-gate
   assert.ok(eventTypes().includes('setup_webhook_recovered'));
 });
@@ -520,6 +533,33 @@ test('T15: planwissel basic→premium → passeert gates, cancelt oude sub, geen
   assert.equal(mollie.calls.cancel[0][0], 'sub_OLD');
   assert.ok(eventTypes().includes('old_subscription_cancelled'));
   assert.equal(activatedMailCalls.length, 0); // mail-gate behouden
+});
+
+// 15b: spiegel-planwissel premium→basic — zelfde cancel-gedrag
+test('T15b: planwissel premium→basic → cancelt exact sub_OLD', async () => {
+  resetSpies();
+  const payment = paymentFake({
+    id: 'tr_DOWN',
+    metaOverrides: { plan: 'basic', replaces_subscription_id: 'sub_OLD' },
+  });
+  mollie = makeMollie({ payment, createResult: { id: 'sub_BAS', startDate: '2026-08-10' } });
+  currentClient = makeClient([
+    OK_SCHOOL,
+    { data: [receiptRow({ external_event_id: 'tr_DOWN' })], error: null },
+    // license actief op premium met de oude sub
+    { data: licenseRow({ billing_plan: 'premium', external_subscription_id: 'sub_OLD' }), error: null },
+    { data: [receiptRow()], error: null },
+    { data: [licenseRow()], error: null },
+    { data: [receiptRow()], error: null },
+    { data: [receiptRow()], error: null },  // succeeded
+  ]);
+  const res = await POST(reqFor(payment));
+  assert.equal(res.status, 200);
+  assert.equal(mollie.calls.create.length, 1);
+  assert.equal(JSON.parse(mollie.calls.create[0].metadata).plan, 'basic');
+  assert.equal(mollie.calls.cancel.length, 1);
+  assert.equal(mollie.calls.cancel[0][0], 'sub_OLD');
+  assert.ok(eventTypes().includes('old_subscription_cancelled'));
 });
 
 // 16: historische payment van een andere customer
