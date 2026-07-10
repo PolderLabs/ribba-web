@@ -44,8 +44,11 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
     **plus de gedeelde SECURITY DEFINER RPC's** (`get_chat_context`, `claim_inquiry`,
     `claim_inquiry_recipient`, `get_inquiry_for_recipient`, `mark_messages_read`) — web-chat en
     ribbaPro-app gebruiken exact dezelfde claim/masking-semantiek
-  - `.well-known/apple-app-site-association` bevat `/chat/*` — met de app geïnstalleerd opent
-    de mail-link de app i.p.v. de browser (universal link, ribbaPro#139)
+  - **Deep-links voor de app** (ribbaPro#139): mails bevatten twee links — de web-chat
+    (`/chat/{token}`, primaire CTA) en een universal link (`/i/{inquiry_id}` leerling-kant,
+    `/r/{recipient_id}` rijschool-kant). AASA bevat `/i/*` + `/r/*`; zonder app tonen die
+    routes een download-fallback. Kale ids geven geen chat-toegang (claim vereist
+    e-mail-match via de RPC's). Gebruik in mails/QR uitsluitend link.ribba.app-URLs.
 - **Wachtwoord reset** (`/reset`)
 - **iCal proxy** (`/api/ical`)
 - **Legal pagina's voor de Rijschool Planner**:

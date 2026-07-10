@@ -51,6 +51,7 @@ export interface InquiryRecipientRow {
   notified_email: string | null;
   rijschool_chat_token: string;
   leerling_chat_token: string;
+  chat_tokens_expire_at: string; // rolling: cron verlengt bij elke notificatiemail
   leerling_email_optout_at: string | null;
   rijschool_email_optout_at: string | null;
   created_at: string;
@@ -91,6 +92,7 @@ export interface MarketplaceProfileRow {
 // contract voor de web-chat gateway en de ribbaPro-app.
 export interface ChatContext {
   found: boolean;
+  expired?: boolean; // token verlopen (alleen relevant bij found: false)
   role: ChatRole;
   inquiry_id: string;
   recipient_id: string;

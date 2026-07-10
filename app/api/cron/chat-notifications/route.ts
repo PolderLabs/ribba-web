@@ -29,6 +29,7 @@ interface ConversationJoin {
   rijschool_last_notified_at: string | null;
   inquiry_recipients: {
     id: string;
+    inquiry_id: string;
     notified_email: string | null;
     rijschool_chat_token: string;
     leerling_chat_token: string;
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       id, leerling_user_id, rijschool_user_id, rijschool_id,
       last_message_at, leerling_last_notified_at, rijschool_last_notified_at,
       inquiry_recipients (
-        id, notified_email, rijschool_chat_token, leerling_chat_token,
+        id, inquiry_id, notified_email, rijschool_chat_token, leerling_chat_token,
         leerling_email_optout_at, rijschool_email_optout_at,
         inquiries ( leerling_email, leerling_name )
       )
@@ -200,6 +201,9 @@ export async function GET(request: NextRequest) {
           messageCount: unreadMessages.length,
           preview: unreadMessages[0].body,
           chatToken: side === 'leerling' ? recipientRow.leerling_chat_token : recipientRow.rijschool_chat_token,
+          appPath: side === 'leerling'
+            ? `/i/${recipientRow.inquiry_id}`
+            : `/r/${recipientRow.id}`,
         });
 
         if (ok) {
@@ -211,6 +215,11 @@ export async function GET(request: NextRequest) {
                 : { rijschool_last_notified_at: new Date().toISOString() },
             )
             .eq('id', conv.id);
+          // Rolling token-expiry: de zojuist gemailde link moet 30 dagen werken.
+          await supabase
+            .from('inquiry_recipients')
+            .update({ chat_tokens_expire_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() })
+            .eq('id', recipientRow.id);
           sent++;
         } else {
           failed++;

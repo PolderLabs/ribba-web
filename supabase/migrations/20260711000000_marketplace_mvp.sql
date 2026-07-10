@@ -104,6 +104,11 @@ CREATE TABLE IF NOT EXISTS public.inquiry_recipients (
   notified_email text,                              -- audit-snapshot van gemaild rijschool-adres (D3)
   rijschool_chat_token uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
   leerling_chat_token uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+  -- Rolling expiry voor beide chat-tokens: de notificatie-cron verlengt bij
+  -- elke verstuurde mail, zodat links in recente mails altijd werken maar een
+  -- oud gelekt token vanzelf dooft. Geclaimde deelnemers behouden toegang
+  -- (expiry gate zit in get_chat_context, niet in RLS).
+  chat_tokens_expire_at timestamptz NOT NULL DEFAULT (now() + interval '30 days'),
   leerling_email_optout_at timestamptz,             -- opt-out reply-mails vóór claim (D4)
   rijschool_email_optout_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -289,6 +294,7 @@ DECLARE
   v_conv RECORD;
   v_expected_email text;
   v_voornaam text;
+  v_claimed_by_caller boolean;
 BEGIN
   SELECT * INTO v_rec FROM public.inquiry_recipients WHERE rijschool_chat_token = p_token;
   IF FOUND THEN
@@ -303,6 +309,14 @@ BEGIN
   END IF;
 
   SELECT * INTO v_inq FROM public.inquiries WHERE id = v_rec.inquiry_id;
+
+  -- Token-expiry: verlopen links werken niet meer voor nieuwe bezoekers,
+  -- maar wie zijn kant al claimde behoudt toegang (RLS dekt de data toch al).
+  v_claimed_by_caller := (v_role = 'rijschool' AND v_rec.rijschool_user_id IS NOT NULL AND v_rec.rijschool_user_id = auth.uid())
+    OR (v_role = 'leerling' AND v_inq.leerling_user_id IS NOT NULL AND v_inq.leerling_user_id = auth.uid());
+  IF now() > v_rec.chat_tokens_expire_at AND NOT v_claimed_by_caller THEN
+    RETURN jsonb_build_object('found', false, 'expired', true);
+  END IF;
   SELECT id, name, email, city INTO v_school FROM public.cbr_rijscholen WHERE id = v_rec.rijschool_id;
   SELECT id, leerling_user_id INTO v_conv FROM public.conversations WHERE inquiry_recipient_id = v_rec.id;
 

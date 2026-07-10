@@ -14,7 +14,8 @@
           { "/": "/join/*" },
           { "/": "/reset" },
           { "/": "/reset/*" },
-          { "/": "/chat/*", "comment": "marketplace web-chat: met app geïnstalleerd opent de mail-link de app (ribbaPro#139)" }
+          { "/": "/i/*", "comment": "marketplace inquiry deep-link, leerling-kant (ribbaPro#139)" },
+          { "/": "/r/*", "comment": "marketplace recipient deep-link, rijschool-kant (ribbaPro#139)" }
         ]
       }
     ]

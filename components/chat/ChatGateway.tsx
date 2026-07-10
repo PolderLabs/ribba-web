@@ -118,6 +118,9 @@ export default function ChatGateway({ token }: { token: string }) {
       const { data, error } = await supabase.rpc('get_chat_context', { p_token: token });
 
       if (error || !data?.found) {
+        if (data?.expired) {
+          setErrorMsg('Deze chat-link is verlopen. In je meest recente e-mail over dit gesprek staat een werkende link.');
+        }
         setPhase('invalid');
         return;
       }

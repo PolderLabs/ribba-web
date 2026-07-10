@@ -137,6 +137,18 @@ export interface OutreachMailInput {
   gewensteStartdatum: string | null; // ISO date
   bericht: string | null;
   chatToken: string;
+  recipientId: string; // voor de app-deep-link /r/{recipient_id} (ribbaPro#139)
+}
+
+// Universal link die de Ribba app opent als die geïnstalleerd is; zonder app
+// toont link.ribba.app/i|/r een download-fallback. Claimen via deze kale id
+// kan alleen met e-mail-match (claim-RPC's), dus de link is geen bearer-token.
+function appLinkBlock(path: string): string {
+  return `
+    <p style="margin:14px 0 0;font-size:13px;color:#64748B">
+      Heb je de Ribba app? <a href="${BASE_URL}${path}" style="color:#2563EB;font-weight:600">Open dit gesprek in de app</a> voor push-meldingen bij elk bericht.
+    </p>
+  `;
 }
 
 // Outreach naar de rijschool: nieuwe aanvraag, geanonimiseerd (alleen
@@ -172,6 +184,7 @@ export async function sendRijschoolOutreachMail(input: OutreachMailInput): Promi
       </table>
       ${berichtBlok}
       <p style="margin:16px 0 0;font-size:13px;color:#64748B">Contactgegevens van de leerling worden zichtbaar zodra je de aanvraag accepteert. Tot die tijd verloopt alle communicatie anoniem via Ribba.</p>
+      ${appLinkBlock(`/r/${input.recipientId}`)}
     `,
     ctaLabel: 'Beantwoord de aanvraag',
     ctaHref: chatUrl,
@@ -233,6 +246,7 @@ export interface ReplyNotificationInput {
   messageCount: number;
   preview: string;        // korte preview van het nieuwste bericht
   chatToken: string;      // token van de ontvangende kant → /chat/{token}
+  appPath: string;        // universal link: /i/{inquiry_id} (leerling) of /r/{recipient_id} (rijschool)
 }
 
 // Reply-notificatie (issue ribba.app#44): de ontvanger heeft geen actieve
@@ -260,6 +274,7 @@ export async function sendReplyNotificationMail(input: ReplyNotificationInput): 
         &nbsp;·&nbsp;
         <a href="https://play.google.com/store/apps/details?id=app.ribba.pro" style="color:#2563EB;font-weight:600;font-size:14px">Google Play</a>
       </p>
+      ${appLinkBlock(input.appPath)}
     `,
     ctaLabel: 'Open de chat',
     ctaHref: chatUrl,

@@ -223,6 +223,7 @@ export async function POST(request: NextRequest) {
             gewensteStartdatum: startdatum,
             bericht,
             chatToken: recipient.rijschool_chat_token,
+            recipientId: recipient.id,
           });
           if (sent) {
             await supabase
