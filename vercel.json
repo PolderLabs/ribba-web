@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/reconcile-subscriptions",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/chat-notifications",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

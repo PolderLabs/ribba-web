@@ -14,6 +14,7 @@ const PLANNER_ROUTES = [
   '/payment',
   '/reset',
   '/join',
+  '/chat',
 ];
 
 function isPlannerRoute(pathname: string): boolean {

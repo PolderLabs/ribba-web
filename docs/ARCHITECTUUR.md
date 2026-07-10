@@ -36,6 +36,12 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
 - **Abonnement opzeggen** (knop op `/upgrade`)
 - **Betaalflow** — Mollie iDEAL + SEPA recurring (`/api/checkout`, `/api/mollie-webhook`, `/api/cancel-subscription`)
 - **Leerling-inschrijfpagina per rijschool** (`/[slug]`)
+- **Marketplace web-backend** (Epic ribba.app#35):
+  - `/api/inquiry-submit` — inquiry-intake vanaf de vergelijkingssite (CORS), schrijft `inquiries` + `inquiry_recipients`, stuurt outreach-mails naar rijscholen
+  - `/chat/[token]` — geanonimiseerde web-chat gateway met e-mailverificatie (Supabase Auth OTP), realtime via Supabase Realtime
+  - `/api/chat/resolve` + `/api/chat/claim` — token-resolutie en account-koppeling (service role)
+  - `/api/cron/chat-notifications` — reply-notificatie e-mails (gebundeld, beide richtingen)
+  - `supabase/migrations/` — schema voor inquiries/conversations/messages/user_profiles (gedeeld met de apps)
 - **Wachtwoord reset** (`/reset`)
 - **iCal proxy** (`/api/ical`)
 - **Legal pagina's voor de Rijschool Planner**:
@@ -97,6 +103,10 @@ Beide de iOS app en deze web-repo praten met **dezelfde Supabase database**:
 | `instructors` | Beide | Beide |
 | `instructor_licenses` | **Web (subscription/betaling)** | Beide |
 | `students` | Beide | Beide |
+| `cbr_rijscholen` | Vergelijkingssite-pipeline | Beide (web leest voor marketplace-outreach) |
+| `inquiries` + `inquiry_recipients` | **Web (`/api/inquiry-submit`, chat-claim)** | Beide |
+| `conversations` + `messages` | Beide (web-chat én apps, zelfde bron van waarheid) | Beide |
+| `user_profiles` | Beide (web maakt aan bij chat-claim) | Beide |
 
 ### Belangrijk: `instructor_licenses` kolommen
 
