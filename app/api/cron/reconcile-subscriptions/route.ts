@@ -38,6 +38,12 @@ export async function GET(request: NextRequest) {
   // Kandidaten: license is active, NIET in trial, heeft een Mollie customer,
   // maar geen subscription. >1u oud zodat we niet vechten met een normale
   // webhook-flow die net binnenkomt.
+  //
+  // P0: cancelled_at IS NULL is verplicht. Een opgezegde license zit in
+  // CANCELLED_GRACE (status='active', external_subscription_id=null,
+  // mollie_customer_id nog gevuld) en matchte vóór deze fix alle filters —
+  // waardoor de cron een NIEUWE subscription aanmaakte voor een klant die
+  // net had opgezegd (bewezen: sub_4nb9hcBarR, 11 juli 03:09 UTC).
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data: candidates, error } = await getSupabase()
     .from('instructor_licenses')
@@ -46,6 +52,7 @@ export async function GET(request: NextRequest) {
     .eq('is_trial', false)
     .not('mollie_customer_id', 'is', null)
     .is('external_subscription_id', null)
+    .is('cancelled_at', null)
     .lt('updated_at', oneHourAgo);
 
   if (error) {
