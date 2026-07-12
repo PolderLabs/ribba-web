@@ -3,6 +3,7 @@
 // via Resend. Zelfde huisstijl als lib/admin-notifications.ts.
 
 import { logBillingEvent } from './billing-events';
+import { getPlanPricing, formatCentsForDisplay, type PlanPricing } from './plan-pricing';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
@@ -146,19 +147,16 @@ function formatDate(d: Date | string): string {
   });
 }
 
-function formatPrice(amount: number): string {
-  return `€${amount.toFixed(2).replace('.', ',')}`;
-}
-
 export async function sendSubscriptionActivatedMail(
   schoolId: string,
   schoolEmail: string,
   schoolName: string,
-  plan: 'basic' | 'premium',
-  pricePerMonth: number,
+  pricing: PlanPricing,
   nextChargeDate: Date | string,
 ): Promise<void> {
-  const planLabel = plan === 'premium' ? 'Premium' : 'Basic';
+  // NB: deze bevestigingsmail is bewust GEEN factuur, btw-factuur of
+  // kwitantie en mag ook nergens zo heten — het echte factuurpad is P0.2.
+  const planLabel = pricing.plan === 'premium' ? 'Premium' : 'Basic';
   const subject = `Welkom bij Ribba ${planLabel}!`;
   const html = wrap({
     pillLabel: 'Abonnement actief',
@@ -169,19 +167,27 @@ export async function sendSubscriptionActivatedMail(
       <p style="margin:0 0 16px">Je <strong>Ribba ${escapeHtml(planLabel)}</strong>-abonnement is geactiveerd. Je hebt direct toegang tot alle functies van je gekozen plan.</p>
       <table cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#F8FAFC;border-radius:12px;margin:16px 0">
         <tr>
-          <td style="padding:14px 16px;font-size:13px;color:#64748B;width:160px">Plan</td>
+          <td style="padding:14px 16px;font-size:13px;color:#64748B;width:200px">Plan</td>
           <td style="padding:14px 16px;font-size:14px;color:#0F172A;font-weight:600">${escapeHtml(planLabel)}</td>
         </tr>
         <tr>
-          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Maandbedrag</td>
-          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatPrice(pricePerMonth)} excl. BTW</td>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Maandbedrag (excl. btw)</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.netMonthlyCents)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Btw (${pricing.vatRatePercent}%)</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.vatCents)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Totaal per maand (incl. btw)</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.grossMonthlyCents)}</td>
         </tr>
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Volgende incasso</td>
           <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatDate(nextChargeDate)}</td>
         </tr>
       </table>
-      <p style="margin:16px 0 8px;font-size:14px;color:#475569">De volgende maandbedragen gaan automatisch via SEPA-incasso van je rekening. Opzeggen kan altijd via <a href="${BASE_URL}/upgrade" style="color:#2563EB;font-weight:600">jouw abonnementspagina</a>.</p>
+      <p style="margin:16px 0 8px;font-size:14px;color:#475569">Het totaalbedrag (incl. btw) wordt maandelijks automatisch via SEPA-incasso van je rekening afgeschreven. Opzeggen kan altijd via <a href="${BASE_URL}/upgrade" style="color:#2563EB;font-weight:600">jouw abonnementspagina</a>.</p>
     `,
     ctaLabel: 'Open je dashboard',
     ctaHref: `${BASE_URL}/upgrade`,
@@ -256,13 +262,13 @@ export async function sendTrialEndingReminderMail(
       <table cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#F8FAFC;border-radius:12px;margin:16px 0">
         <tr>
           <td style="padding:14px 16px;font-size:14px;color:#0F172A">
-            <strong>Basic — €25 / maand</strong><br>
+            <strong>Basic — ${formatCentsForDisplay(getPlanPricing('basic').netMonthlyCents)} / maand excl. btw</strong> <span style="font-size:13px;color:#64748B">(${formatCentsForDisplay(getPlanPricing('basic').grossMonthlyCents)} incl. btw)</span><br>
             <span style="font-size:13px;color:#64748B">1 instructeur, tot 30 leerlingen</span>
           </td>
         </tr>
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;border-top:1px solid #E2E8F0;padding-top:14px">
-            <strong>Premium — €45 / maand</strong><br>
+            <strong>Premium — ${formatCentsForDisplay(getPlanPricing('premium').netMonthlyCents)} / maand excl. btw</strong> <span style="font-size:13px;color:#64748B">(${formatCentsForDisplay(getPlanPricing('premium').grossMonthlyCents)} incl. btw)</span><br>
             <span style="font-size:13px;color:#64748B">Onbeperkt leerlingen, tot 5 instructeurs, alle koppelingen</span>
           </td>
         </tr>

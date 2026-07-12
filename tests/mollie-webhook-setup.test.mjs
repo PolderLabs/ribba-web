@@ -193,6 +193,10 @@ test('T1/T8: eerste delivery → claim, create met setup_payment_id + idempotenc
   assert.equal(subMeta.plan, 'basic');
   assert.equal(subMeta.type, 'recurring');
 
+  // P0.1 geldpadbewijs: subscription incasseert BRUTO (€25 excl. + 21% btw)
+  assert.deepEqual(createParams.amount, { currency: 'EUR', value: '30.25' });
+  assert.equal(createParams.description, 'Ribba Basic – Maandabonnement');
+
   // A: fingerprint deterministisch over uitsluitend de goedgekeurde velden
   const claimCall = currentClient.calls[1];
   const upsertRow = claimCall.ops.find(([m]) => m === 'upsert')[1];
@@ -208,6 +212,17 @@ test('T1/T8: eerste delivery → claim, create met setup_payment_id + idempotenc
   const licUpdate = currentClient.calls[4];
   const licConds = Object.fromEntries(licUpdate.ops.filter(([m]) => m === 'eq').map(([, c, v]) => [c, v]));
   assert.equal(licConds.id, 'lic-1');
+
+  // P0.1: price_per_month = NETTO maandprijs (excl. btw), nooit het bruto bedrag
+  const licUpdateRow = licUpdate.ops.find(([m]) => m === 'update')[1];
+  assert.equal(licUpdateRow.price_per_month, 25);
+
+  // P0.1: activatiemail krijgt het volledige pricing-object (netto/btw/bruto)
+  assert.equal(activatedMailCalls.length, 1);
+  const mailPricing = activatedMailCalls[0][3];
+  assert.equal(mailPricing.netMonthlyCents, 2500);
+  assert.equal(mailPricing.vatCents, 525);
+  assert.equal(mailPricing.grossMonthlyCents, 3025);
 
   // F/18: mails precies één keer, admin-notify subscription_activated één keer
   assert.equal(activatedMailCalls.length, 1);
@@ -528,11 +543,35 @@ test('T15: planwissel basic→premium → passeert gates, cancelt oude sub, geen
   assert.equal(res.status, 200);
   assert.equal(mollie.calls.create.length, 1);
   assert.equal(JSON.parse(mollie.calls.create[0].metadata).plan, 'premium');
+  // P0.1 geldpadbewijs: premium incasseert bruto €54,45 (€45 excl. + 21% btw)
+  assert.deepEqual(mollie.calls.create[0].amount, { currency: 'EUR', value: '54.45' });
   // Dé B1-fix: oude subscription wordt nu WEL gecanceld bij planwissel
   assert.equal(mollie.calls.cancel.length, 1);
   assert.equal(mollie.calls.cancel[0][0], 'sub_OLD');
   assert.ok(eventTypes().includes('old_subscription_cancelled'));
   assert.equal(activatedMailCalls.length, 0); // mail-gate behouden
+});
+
+// P0.1: onbekend plan in de metadata — fail-closed vóór élke side-effect
+test('T21: onbekend plan → 200 unknown_plan_rejected, nul Mollie-calls, geen receipt-claim, geen license-write, wel admin-notify', async () => {
+  resetSpies();
+  const payment = paymentFake({ metaOverrides: { plan: 'legacy_gold' } });
+  mollie = makeMollie({ payment });
+  currentClient = makeClient([
+    OK_SCHOOL,      // school-existence check
+    MAIL_SCHOOL,    // admin-notify lookup
+  ]);
+  const res = await POST(reqFor(payment));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, 'unknown_plan_rejected');
+  assert.equal(mollie.calls.create.length, 0);
+  assert.equal(mollie.calls.cancel.length, 0);
+  assert.equal(activatedMailCalls.length, 0);
+  // Geen receipt-claim en geen license-query: alleen de 2 gescripte lookups
+  assert.equal(currentClient.calls.length, 2);
+  assert.deepEqual(eventTypes(), ['unknown_plan_rejected']);
+  assert.equal(adminNotifyCalls.length, 1);
+  assert.equal(adminNotifyCalls[0].s.extra.reason, 'unknown_plan_rejected');
 });
 
 // 15b: spiegel-planwissel premium→basic — zelfde cancel-gedrag

@@ -5,6 +5,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
+import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+
+const basicPricing = getPlanPricing('basic');
+const premiumPricing = getPlanPricing('premium');
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -417,8 +421,11 @@ function UpgradeContent() {
               <span className="pill">Basic</span>
               <div className="plan-price">
                 <span className="plan-amount">&euro;25</span>
-                <span className="plan-period">/maand</span>
+                <span className="plan-period">/maand excl. btw</span>
               </div>
+              <p style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0' }}>
+                Incasso: {formatCentsForDisplay(basicPricing.grossMonthlyCents)} per maand incl. 21% btw
+              </p>
               <p className="plan-desc">
                 Alles wat je nodig hebt om je rijschool te draaien.
               </p>
@@ -470,8 +477,11 @@ function UpgradeContent() {
               <span className="pill pill-premium">Premium</span>
               <div className="plan-price">
                 <span className="plan-amount">&euro;45</span>
-                <span className="plan-period">/maand</span>
+                <span className="plan-period">/maand excl. btw</span>
               </div>
+              <p style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0' }}>
+                Incasso: {formatCentsForDisplay(premiumPricing.grossMonthlyCents)} per maand incl. 21% btw
+              </p>
               <p className="plan-desc">
                 Groei je rijschool met meer leerlingen en instructeurs.
               </p>
@@ -552,7 +562,7 @@ function UpgradeContent() {
         <div style={{ textAlign: 'center', marginTop: 48 }}>
           <p style={{ fontSize: 14, color: '#78716C', lineHeight: 1.8 }}>
             Annuleer wanneer je wilt. Geen verplichtingen.<br />
-            Alle prijzen zijn exclusief BTW.
+            Alle prijzen zijn exclusief 21% btw; de incasso via Mollie is inclusief btw.
           </p>
           <div className="divider" />
           <p style={{ fontSize: 13, color: '#A8A29E' }}>
