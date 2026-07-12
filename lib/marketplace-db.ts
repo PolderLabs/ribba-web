@@ -62,18 +62,24 @@ export async function lookupRecipientByToken(token: string): Promise<RecipientTo
   const columns =
     'id, inquiry_id, rijschool_id, rijschool_user_id, status, notified_email, leerling_email_optout_at, rijschool_email_optout_at';
 
-  const { data: asRijschool } = await supabase
+  const { data: asRijschool, error: rijschoolError } = await supabase
     .from('inquiry_recipients')
     .select(columns)
     .eq('rijschool_chat_token', token)
     .maybeSingle();
+  if (rijschoolError) {
+    throw new Error(`recipient token lookup failed: ${rijschoolError.message}`);
+  }
   if (asRijschool) return { recipient: asRijschool, role: 'rijschool' };
 
-  const { data: asLeerling } = await supabase
+  const { data: asLeerling, error: leerlingError } = await supabase
     .from('inquiry_recipients')
     .select(columns)
     .eq('leerling_chat_token', token)
     .maybeSingle();
+  if (leerlingError) {
+    throw new Error(`recipient token lookup failed: ${leerlingError.message}`);
+  }
   if (asLeerling) return { recipient: asLeerling, role: 'leerling' };
 
   return null;

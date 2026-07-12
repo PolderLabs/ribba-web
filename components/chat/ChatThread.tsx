@@ -56,12 +56,14 @@ export default function ChatThread({
     let channel: RealtimeChannel | null = null;
     let cancelled = false;
 
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session || cancelled) return;
-      userIdRef.current = session.user.id;
-      supabase.realtime.setAuth(session.access_token);
+    let initialLoadDone = false;
 
+    // Initial load pas ná (poging tot) subscriben, zodat berichten die tussen
+    // fetch en subscribe binnenkomen niet verloren gaan; het id-dedupe in de
+    // INSERT-handler vangt de overlap af.
+    const loadMessages = async () => {
+      if (initialLoadDone || cancelled) return;
+      initialLoadDone = true;
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -74,9 +76,25 @@ export default function ChatThread({
         setLoading(false);
         return;
       }
-      setMessages((data as MessageRow[]) ?? []);
+      setMessages((prev) => {
+        const loaded = (data as MessageRow[]) ?? [];
+        const extra = prev.filter((m) => !loaded.some((l) => l.id === m.id));
+        return [...loaded, ...extra];
+      });
       setLoading(false);
       void markRead();
+    };
+
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!session) {
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
+      userIdRef.current = session.user.id;
+      supabase.realtime.setAuth(session.access_token);
 
       channel = supabase
         .channel(`chat-${conversationId}`)
@@ -97,7 +115,13 @@ export default function ChatThread({
             setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)));
           },
         )
-        .subscribe();
+        .subscribe((status) => {
+          // Ook bij een falend kanaal de historie tonen (chat zonder
+          // realtime is bruikbaarder dan een eeuwige spinner).
+          if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            void loadMessages();
+          }
+        });
     })();
 
     // Realtime-token vernieuwen wanneer de sessie ververst.

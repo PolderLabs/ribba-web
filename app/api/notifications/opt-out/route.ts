@@ -64,10 +64,15 @@ export async function GET(request: NextRequest) {
       sideUserId = inquiry?.leerling_user_id ?? null;
     }
     if (sideUserId) {
-      await supabase
+      const { error: prefError } = await supabase
         .from('marketplace_profiles')
         .update({ email_notifications: false })
         .eq('user_id', sideUserId);
+      if (prefError) {
+        // Stamp op inquiry_recipients staat al (idempotent); laat de gebruiker
+        // opnieuw proberen zodat ook de account-brede voorkeur uit gaat.
+        throw new Error(`profile opt-out failed: ${prefError.message}`);
+      }
     }
 
     return page(

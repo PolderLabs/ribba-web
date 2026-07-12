@@ -114,24 +114,30 @@ export default function ChatGateway({ token }: { token: string }) {
 
   useEffect(() => {
     (async () => {
-      const supabase = getSupabase();
-      const { data, error } = await supabase.rpc('get_chat_context', { p_token: token });
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase.rpc('get_chat_context', { p_token: token });
 
-      if (error || !data?.found) {
-        if (data?.expired) {
-          setErrorMsg('Deze chat-link is verlopen. In je meest recente e-mail over dit gesprek staat een werkende link.');
+        if (error || !data?.found) {
+          if (data?.expired) {
+            setErrorMsg('Deze chat-link is verlopen. In je meest recente e-mail over dit gesprek staat een werkende link.');
+          }
+          setPhase('invalid');
+          return;
         }
-        setPhase('invalid');
-        return;
-      }
-      const context = data as ChatContext;
-      setInfo(context);
+        const context = data as ChatContext;
+        setInfo(context);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await claim(context);
-      } else {
-        setPhase('otp');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          await claim(context);
+        } else {
+          setPhase('otp');
+        }
+      } catch {
+        // Onverwachte fout (netwerk, client-init) mag de spinner niet
+        // eeuwig laten draaien.
+        setPhase('invalid');
       }
     })();
   }, [token, claim]);
@@ -159,8 +165,10 @@ export default function ChatGateway({ token }: { token: string }) {
           <RibbaLogo />
           <h1>Deze link werkt niet</h1>
           <p className="chat-muted">
-            {errorMsg ?? 'De chat-link is ongeldig of verlopen. Gebruik de meest recente link uit je e-mail, of mail ons op '}
-            {!errorMsg && <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>}
+            {errorMsg ?? 'De chat-link is ongeldig of verlopen. Gebruik de meest recente link uit je e-mail.'}
+          </p>
+          <p className="chat-muted">
+            Kom je er niet uit? Mail ons op <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>.
           </p>
         </div>
       </div>

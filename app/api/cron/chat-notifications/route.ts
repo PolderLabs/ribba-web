@@ -68,7 +68,11 @@ export async function GET(request: NextRequest) {
     `)
     .not('last_message_at', 'is', null)
     .lte('last_message_at', settleCutoff)
-    .gte('last_message_at', new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString());
+    .gte('last_message_at', new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString())
+    // Bewuste cap: oudste activiteit eerst, rest pakt de volgende run (5 min)
+    // op — voorkomt een onbegrensde respons én een maxDuration-overschrijding.
+    .order('last_message_at', { ascending: true })
+    .limit(200);
 
   if (error) {
     console.error('chat-notifications: conversations query failed', error);
@@ -141,26 +145,8 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        const counterpartRole: ChatRole = side === 'leerling' ? 'rijschool' : 'leerling';
-        let unreadQuery = supabase
-          .from('messages')
-          .select('body, created_at')
-          .eq('conversation_id', conv.id)
-          .eq('sender_role', counterpartRole)
-          .is('read_at', null)
-          .lte('created_at', settleCutoff)
-          .order('created_at', { ascending: false });
-        if (lastNotified) {
-          unreadQuery = unreadQuery.gt('created_at', lastNotified);
-        }
-        const { data: unread } = await unreadQuery;
-        const unreadMessages = (unread ?? []) as Pick<MessageRow, 'body' | 'created_at'>[];
-        if (unreadMessages.length === 0) {
-          skipped++;
-          continue;
-        }
-
-        // Notify-regel per kant.
+        // Goedkope filters éérst — de messages-query alleen voor kanten die
+        // überhaupt gemaild mogen worden.
         const sideUserId = side === 'leerling' ? conv.leerling_user_id : conv.rijschool_user_id;
         const optedOut = side === 'leerling'
           ? recipientRow.leerling_email_optout_at !== null
@@ -187,6 +173,25 @@ export async function GET(request: NextRequest) {
           ? recipientRow.inquiries.leerling_email
           : recipientRow.notified_email;
         if (!to) {
+          skipped++;
+          continue;
+        }
+
+        const counterpartRole: ChatRole = side === 'leerling' ? 'rijschool' : 'leerling';
+        let unreadQuery = supabase
+          .from('messages')
+          .select('body, created_at')
+          .eq('conversation_id', conv.id)
+          .eq('sender_role', counterpartRole)
+          .is('read_at', null)
+          .lte('created_at', settleCutoff)
+          .order('created_at', { ascending: false });
+        if (lastNotified) {
+          unreadQuery = unreadQuery.gt('created_at', lastNotified);
+        }
+        const { data: unread } = await unreadQuery;
+        const unreadMessages = (unread ?? []) as Pick<MessageRow, 'body' | 'created_at'>[];
+        if (unreadMessages.length === 0) {
           skipped++;
           continue;
         }

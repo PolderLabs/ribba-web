@@ -27,25 +27,33 @@ async function sendMail(to: string, subject: string, html: string, emailType: st
     console.warn('marketplace-emails: RESEND_API_KEY not set, skipping', emailType, to);
     return false;
   }
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'Ribba <noreply@ribba.app>',
-      to,
-      subject,
-      html,
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    console.error('marketplace-emails: send failed', emailType, res.status, errText.slice(0, 500));
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Ribba <noreply@ribba.app>',
+        to,
+        subject,
+        html,
+      }),
+      // Een hangende Resend-call mag de after()-outreach of de cron niet de
+      // hele maxDuration opeten; false → volgende ontvanger gaat gewoon door.
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('marketplace-emails: send failed', emailType, res.status, errText.slice(0, 500));
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('marketplace-emails: send errored', emailType, err instanceof Error ? err.message : err);
     return false;
   }
-  return true;
 }
 
 interface WrapOpts {
@@ -64,7 +72,7 @@ function wrap(opts: WrapOpts): string {
   const cta = opts.ctaLabel && opts.ctaHref
     ? `
       <tr><td style="padding:24px 32px 8px 32px">
-        <a href="${opts.ctaHref}" style="display:inline-block;background:${opts.ctaColor || '#2563EB'};color:#FFFFFF;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px">
+        <a href="${escapeHtml(opts.ctaHref)}" style="display:inline-block;background:${escapeHtml(opts.ctaColor || '#2563EB')};color:#FFFFFF;padding:13px 24px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px">
           ${escapeHtml(opts.ctaLabel)}
         </a>
       </td></tr>

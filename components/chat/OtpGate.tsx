@@ -2,7 +2,7 @@
 
 // E-mailverificatie-gate: OTP via Supabase Auth. De gebruiker vult het adres
 // in waarop hij de chat-link ontving; de échte match-check gebeurt server-side
-// in /api/chat/claim (het masked adres hier is alleen een hint).
+// in de claim-RPC's (het masked adres hier is alleen een hint).
 
 import { FormEvent, useState } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
@@ -18,9 +18,9 @@ export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
 
-  async function handleSendCode(e: FormEvent) {
-    e.preventDefault();
+  async function sendCode(): Promise<boolean> {
     setError(null);
     setBusy(true);
     const { error: otpError } = await supabase.auth.signInWithOtp({
@@ -30,9 +30,24 @@ export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
     setBusy(false);
     if (otpError) {
       setError('Code versturen mislukt. Controleer je e-mailadres en probeer het opnieuw.');
-      return;
+      return false;
     }
-    setStep('code');
+    return true;
+  }
+
+  async function handleSendCode(e: FormEvent) {
+    e.preventDefault();
+    if (await sendCode()) {
+      setResent(false);
+      setStep('code');
+    }
+  }
+
+  async function handleResend() {
+    if (await sendCode()) {
+      setCode('');
+      setResent(true);
+    }
   }
 
   async function handleVerify(e: FormEvent) {
@@ -80,6 +95,7 @@ export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
       <p className="chat-muted">
         We hebben een 6-cijferige code gestuurd naar <strong>{email.trim().toLowerCase()}</strong>.
       </p>
+      {resent && <div className="alert-info" role="status">Nieuwe code verstuurd.</div>}
       <div className="form-group">
         <label htmlFor="otp-code">Verificatiecode</label>
         <input
@@ -102,7 +118,16 @@ export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
       <button
         type="button"
         className="chat-link-button"
-        onClick={() => { setStep('email'); setCode(''); setError(null); }}
+        disabled={busy}
+        onClick={() => { void handleResend(); }}
+      >
+        Verificatiecode opnieuw versturen
+      </button>
+      <button
+        type="button"
+        className="chat-link-button"
+        disabled={busy}
+        onClick={() => { setStep('email'); setCode(''); setError(null); setResent(false); }}
       >
         Ander e-mailadres gebruiken
       </button>
