@@ -103,6 +103,7 @@ export async function GET(request: NextRequest) {
     const { data: pushRows, error: pushError } = await supabase
       .from('push_tokens')
       .select('user_id')
+      .eq('is_active', true)
       .in('user_id', userIds);
     if (pushError) {
       // Tabel(naam) niet beschikbaar → conservatief: niemand als push-gedekt
