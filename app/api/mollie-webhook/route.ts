@@ -16,6 +16,13 @@ import {
   markReceiptFailed,
   markReceiptDiscarded,
 } from '@/lib/billing-webhook-receipts';
+import {
+  isPaidPlan,
+  getPlanPricing,
+  formatCentsForMollie,
+  netMonthlyEurosForDb,
+  planDescription,
+} from '@/lib/plan-pricing';
 
 const FAILED_PAYMENT_LIMIT = 3;
 
@@ -26,11 +33,6 @@ function getMollie() {
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
-
-const PLAN_AMOUNTS: Record<string, string> = {
-  basic: '25.00',
-  premium: '45.00',
-};
 
 // Recovery-correlatie: zoek bij Mollie de subscription die door deze setup-payment
 // is aangemaakt. Correleert UITSLUITEND op metadata.setup_payment_id (harde sleutel)
@@ -83,6 +85,42 @@ export async function POST(request: NextRequest) {
 
     // Only process paid first payments (subscription setup)
     if (payment.status === 'paid' && type === 'subscription_setup') {
+      // Fail-closed vóór elke side-effect: een onbekend plan mag nooit een
+      // subscription, license-write of mail veroorzaken — en zeker geen
+      // fallback-bedrag. 200 (net als ontbrekende metadata hierboven): een
+      // permanent kapot plan lost een Mollie-retry niet op; de admin-notify
+      // maakt het zichtbaar.
+      if (!isPaidPlan(plan)) {
+        console.error(`Webhook: onbekend plan '${String(plan)}' voor school ${school_id} — fail-closed, niets uitgevoerd`);
+        await logBillingEvent({
+          school_id,
+          event_type: 'unknown_plan_rejected',
+          source: 'mollie-webhook',
+          payload: { plan: String(plan), payment_id: paymentId, type },
+        });
+        try {
+          const { data: schoolRow } = await getSupabase()
+            .from('drivingschools')
+            .select('name, email, city')
+            .eq('id', school_id)
+            .maybeSingle();
+          if (schoolRow) {
+            await sendAdminNotification('subscription_creation_failed', {
+              id: school_id,
+              name: schoolRow.name,
+              email: schoolRow.email,
+              city: schoolRow.city,
+              billing_plan: String(plan),
+              extra: { reason: 'unknown_plan_rejected', payment_id: paymentId },
+            }).catch((e) => console.error('Admin notify (unknown_plan_rejected) failed:', e));
+          }
+        } catch (notifyErr) {
+          console.error('Admin notify lookup failed:', notifyErr);
+        }
+        return NextResponse.json({ status: 'unknown_plan_rejected' });
+      }
+      // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT).
+      const pricing = getPlanPricing(plan);
       // ── Canonieke idempotentie-claim (billing_webhook_receipts, throwing) ──
       // Vóór élke side-effect. Bij gelijktijdige deliveries wint er exact één
       // via de unique constraint. Een claim-/DB-fout throwt → outer catch → 500.
@@ -254,10 +292,10 @@ export async function POST(request: NextRequest) {
 
               const subscription = await getMollie().customerSubscriptions.create({
                 customerId,
-                amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] || '45.00' },
+                amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
                 interval: '1 month',
                 startDate: startDateStr,
-                description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
+                description: planDescription(pricing.plan),
                 webhookUrl: `${baseUrl}/api/mollie-webhook`,
                 // setup_payment_id = harde correlatiesleutel voor crash-recovery.
                 metadata: JSON.stringify({ school_id, plan, type: 'recurring', setup_payment_id: paymentId }),
@@ -296,7 +334,9 @@ export async function POST(request: NextRequest) {
                 external_subscription_id: subscriptionId,
                 mollie_customer_id: customerId,
                 is_trial: false,
-                price_per_month: parseFloat(PLAN_AMOUNTS[plan] || '45'),
+                // Besluit 12 jul 2026: price_per_month = NETTO maandprijs
+                // (excl. btw); Mollie incasseert het bruto bedrag.
+                price_per_month: netMonthlyEurosForDb(pricing),
                 period_end: periodEndIso,
                 cancelled_at: null,
                 failed_payment_count: 0,
@@ -524,8 +564,7 @@ export async function POST(request: NextRequest) {
                 school_id,
                 schoolRow.email,
                 schoolRow.name,
-                plan as 'basic' | 'premium',
-                parseFloat(PLAN_AMOUNTS[plan] || '45'),
+                pricing,
                 nextChargeDate,
               ).catch((e) => console.error('School subscription-activated mail failed:', e));
             }

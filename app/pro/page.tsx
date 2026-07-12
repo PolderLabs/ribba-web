@@ -3,6 +3,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
 import { APP_STORE_URL } from '@/lib/app-links';
+import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+
+const BASIC_GROSS = formatCentsForDisplay(getPlanPricing('basic').grossMonthlyCents);
+const PREMIUM_GROSS = formatCentsForDisplay(getPlanPricing('premium').grossMonthlyCents);
 
 export const metadata: Metadata = {
   title: 'Ribba – Rijschool Planner',
@@ -360,7 +364,7 @@ export default function ProPage() {
                   <div className="plan-price">
                     <span style={{ fontSize: 14, color: '#78716C', marginRight: 1, alignSelf: 'flex-start', paddingTop: 10 }}>€</span>
                     <span className="plan-amount">25</span>
-                    <span className="plan-period">/mnd</span>
+                    <span className="plan-period">/mnd excl. btw</span>
                   </div>
                   <p className="plan-desc">Voor zelfstandige instructeurs</p>
                 </div>
@@ -375,7 +379,7 @@ export default function ProPage() {
                 <Link href="/registreren" className="btn-trial" style={{ textDecoration: 'none', display: 'flex' }}>
                   Probeer gratis
                 </Link>
-                <p className="plan-trial-note">Eerste maand gratis · daarna €25/mnd · annuleer altijd</p>
+                <p className="plan-trial-note">Eerste maand gratis · daarna €25/mnd excl. btw ({BASIC_GROSS} incl.) · annuleer altijd</p>
               </div>
 
               {/* Premium */}
@@ -386,7 +390,7 @@ export default function ProPage() {
                   <div className="plan-price">
                     <span style={{ fontSize: 14, color: '#78716C', marginRight: 1, alignSelf: 'flex-start', paddingTop: 10 }}>€</span>
                     <span className="plan-amount">45</span>
-                    <span className="plan-period">/mnd</span>
+                    <span className="plan-period">/mnd excl. btw</span>
                   </div>
                   <p className="plan-desc">Voor groeiende rijscholen</p>
                 </div>
@@ -401,7 +405,7 @@ export default function ProPage() {
                 <Link href="/registreren" className="btn-primary" style={{ textDecoration: 'none', display: 'flex' }}>
                   Probeer gratis
                 </Link>
-                <p className="plan-trial-note">Eerste maand gratis · daarna €45/mnd · annuleer altijd</p>
+                <p className="plan-trial-note">Eerste maand gratis · daarna €45/mnd excl. btw ({PREMIUM_GROSS} incl.) · annuleer altijd</p>
               </div>
             </div>
 

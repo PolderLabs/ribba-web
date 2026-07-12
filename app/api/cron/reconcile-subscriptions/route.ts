@@ -10,14 +10,15 @@ import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { sendAdminNotification } from '@/lib/admin-notifications';
 import { logBillingEvent } from '@/lib/billing-events';
+import {
+  isPaidPlan,
+  getPlanPricing,
+  formatCentsForMollie,
+  planDescription,
+} from '@/lib/plan-pricing';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-const PLAN_AMOUNTS: Record<string, string> = {
-  basic: '25.00',
-  premium: '45.00',
-};
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -60,10 +61,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'query failed' }, { status: 500 });
   }
 
-  const results: Array<{ school_id: string; status: 'fixed' | 'failed'; reason?: string }> = [];
+  const results: Array<{ school_id: string; status: 'fixed' | 'failed' | 'skipped'; reason?: string }> = [];
 
   for (const license of candidates ?? []) {
-    const plan = license.billing_plan === 'premium' ? 'premium' : 'basic';
+    // Fail-closed: alleen bekende betaalde plannen krijgen een subscription.
+    // De oude `=== 'premium' ? 'premium' : 'basic'`-afleiding was een stille
+    // fallback naar Basic; een onbekend plan wordt nu overgeslagen + gelogd.
+    if (!isPaidPlan(license.billing_plan)) {
+      const reason = `unknown_plan:${String(license.billing_plan)}`;
+      results.push({ school_id: license.school_id, status: 'skipped', reason });
+      console.error(`reconcile: skipped school ${license.school_id} — ${reason}`);
+      await logBillingEvent({
+        school_id: license.school_id,
+        event_type: 'unknown_plan_rejected',
+        source: 'cron:reconcile-subscriptions',
+        payload: { plan: String(license.billing_plan), mollie_customer_id: license.mollie_customer_id },
+      });
+      continue;
+    }
+    const plan = license.billing_plan;
+    // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT).
+    const pricing = getPlanPricing(plan);
     try {
       const startDate = new Date();
       startDate.setMonth(startDate.getMonth() + 1);
@@ -71,10 +89,10 @@ export async function GET(request: NextRequest) {
 
       const subscription = await getMollie().customerSubscriptions.create({
         customerId: license.mollie_customer_id!,
-        amount: { currency: 'EUR', value: PLAN_AMOUNTS[plan] },
+        amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
         interval: '1 month',
         startDate: startDateStr,
-        description: `Ribba ${plan === 'premium' ? 'Premium' : 'Basic'} – Maandabonnement`,
+        description: planDescription(pricing.plan),
         webhookUrl: `${baseUrl}/api/mollie-webhook`,
         metadata: JSON.stringify({ school_id: license.school_id, plan, type: 'recurring' }),
       });

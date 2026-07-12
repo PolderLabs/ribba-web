@@ -136,11 +136,12 @@ test('T2: geldige kandidaat (cancelled_at null) → bestaand create-pad ongewijz
   assert.equal(res.body.failed, 0);
 
   // Create met bestaande parameters (geen idempotencyKey/setup_payment_id —
-  // reconcile-receipts zijn bewust buiten scope gehouden)
+  // reconcile-receipts zijn bewust buiten scope gehouden).
+  // P0.1: bedrag komt uit de prijs-SSoT en is BRUTO (€25 excl. + 21% btw).
   assert.equal(mollie.calls.create.length, 1);
   const created = mollie.calls.create[0];
   assert.equal(created.customerId, 'cst_X');
-  assert.deepEqual(created.amount, { currency: 'EUR', value: '25.00' });
+  assert.deepEqual(created.amount, { currency: 'EUR', value: '30.25' });
   assert.equal(created.interval, '1 month');
   assert.equal('idempotencyKey' in created, false);
 
@@ -150,6 +151,53 @@ test('T2: geldige kandidaat (cancelled_at null) → bestaand create-pad ongewijz
   assert.equal(upd.external_subscription_id, 'sub_RECON');
   assert.equal('cancelled_at' in upd, false); // raakt cancelled_at nooit aan
   assert.deepEqual(billingEvents.map((e) => e.event_type), ['subscription_reconciled']);
+});
+
+test('T2b: premium-kandidaat → bruto €54,45 uit dezelfde SSoT', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  const candidate = {
+    id: 'lic-2',
+    school_id: 'school-2',
+    billing_plan: 'premium',
+    mollie_customer_id: 'cst_Y',
+    updated_at: '2026-07-01T00:00:00+00:00',
+  };
+  currentClient = makeClient([
+    { data: [candidate], error: null },
+    { data: null, error: null },
+  ]);
+
+  const res = await GET(reqWithAuth());
+  assert.equal(res.status, 200);
+  assert.equal(res.body.fixed, 1);
+  assert.deepEqual(mollie.calls.create[0].amount, { currency: 'EUR', value: '54.45' });
+  assert.equal(mollie.calls.create[0].description, 'Ribba Premium – Maandabonnement');
+});
+
+test('T2c: onbekend plan → fail-closed skip, GEEN Mollie-call, geen fallback-bedrag', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  const candidate = {
+    id: 'lic-3',
+    school_id: 'school-3',
+    billing_plan: 'legacy_gold', // bestaat niet — oude code viel stil terug op basic
+    mollie_customer_id: 'cst_Z',
+    updated_at: '2026-07-01T00:00:00+00:00',
+  };
+  currentClient = makeClient([
+    { data: [candidate], error: null },
+  ]);
+
+  const res = await GET(reqWithAuth());
+  assert.equal(res.status, 200);
+  assert.equal(res.body.fixed, 0);
+  assert.equal(res.body.failed, 0);
+  assert.equal(mollie.calls.create.length, 0);           // nul Mollie-calls
+  assert.equal(currentClient.calls.length, 1);           // alleen de kandidaatquery
+  const ev = billingEvents.find((e) => e.event_type === 'unknown_plan_rejected');
+  assert.equal(ev.payload.plan, 'legacy_gold');
+  assert.equal(res.body.results[0].status, 'skipped');
 });
 
 test('T3: ongeldige CRON_SECRET → 401, geen queries', async () => {

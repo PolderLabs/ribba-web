@@ -4,6 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
 import { logBillingEvent } from '@/lib/billing-events';
+import {
+  isPaidPlan,
+  getPlanPricing,
+  formatCentsForMollie,
+  planDescription,
+} from '@/lib/plan-pricing';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -12,11 +18,6 @@ function getMollie() {
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
-
-const PLANS = {
-  basic: { amount: '25.00', description: 'Ribba Basic – Maandabonnement' },
-  premium: { amount: '45.00', description: 'Ribba Premium – Maandabonnement' },
-} as const;
 
 export async function POST(request: NextRequest) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
@@ -27,7 +28,8 @@ export async function POST(request: NextRequest) {
   try {
     const { school_id, plan } = await request.json();
 
-    if (!school_id || !plan || !(plan in PLANS)) {
+    // Fail-closed: alleen bekende betaalde plannen; nooit een fallback-bedrag.
+    if (!school_id || !isPaidPlan(plan)) {
       return NextResponse.json(
         { error: 'school_id en plan (basic/premium) zijn verplicht.' },
         { status: 400 },
@@ -54,7 +56,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Geen toegang tot deze rijschool.' }, { status: 403 });
     }
 
-    const planInfo = PLANS[plan as keyof typeof PLANS];
+    // Prijzen zijn excl. 21% btw; Mollie incasseert het bruto bedrag (SSoT).
+    const pricing = getPlanPricing(plan);
 
     // Get school info for Mollie customer name
     const { data: school } = await getSupabase()
@@ -156,8 +159,8 @@ export async function POST(request: NextRequest) {
     // Create first payment (iDEAL) — this establishes the SEPA mandate
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
     const payment = await getMollie().payments.create({
-      amount: { currency: 'EUR', value: planInfo.amount },
-      description: planInfo.description,
+      amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
+      description: planDescription(pricing.plan),
       customerId: mollieCustomerId,
       sequenceType: SequenceType.first,
       redirectUrl: `${baseUrl}/upgrade/success?school_id=${school_id}&plan=${plan}`,
