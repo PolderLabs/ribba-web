@@ -89,10 +89,13 @@ export interface MarketplaceProfileRow {
 }
 
 // Retour-shape van de gedeelde RPC get_chat_context(p_token) — identiek
-// contract voor de web-chat gateway en de ribbaPro-app.
-export interface ChatContext {
-  found: boolean;
-  expired?: boolean; // token verlopen (alleen relevant bij found: false)
+// contract voor de web-chat gateway en de ribbaPro-app. Discriminated union
+// op `found`: de succes-velden bestaan alleen na een found-check.
+export type ChatContext =
+  | { found: false; expired?: boolean }
+  | ({ found: true } & ChatContextData);
+
+export interface ChatContextData {
   role: ChatRole;
   inquiry_id: string;
   recipient_id: string;

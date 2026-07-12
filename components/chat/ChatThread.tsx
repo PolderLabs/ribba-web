@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { AppStoreBadge, GooglePlayBadge } from '@/app/components/StoreBadges';
 import MessageComposer from './MessageComposer';
-import type { ChatContext, ChatRole, InquiryRecipientStatus, MessageRow } from '@/lib/marketplace-types';
+import type { ChatContextData, ChatRole, InquiryRecipientStatus, MessageRow } from '@/lib/marketplace-types';
 
 interface ChatThreadProps {
   supabase: SupabaseClient;
@@ -18,8 +18,8 @@ interface ChatThreadProps {
   role: ChatRole;
   counterpartName: string;
   status: InquiryRecipientStatus;
-  inquiryPreview: ChatContext['inquiry_preview'];
-  contact: ChatContext['contact'];
+  inquiryPreview: ChatContextData['inquiry_preview'];
+  contact: ChatContextData['contact'];
 }
 
 function formatTime(iso: string): string {

@@ -15,7 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import RibbaLogo from '@/app/components/RibbaLogo';
 import OtpGate from './OtpGate';
 import ChatThread from './ChatThread';
-import type { ChatContext } from '@/lib/marketplace-types';
+import type { ChatContext, ChatContextData } from '@/lib/marketplace-types';
 
 type Phase =
   | 'resolving'
@@ -45,13 +45,14 @@ function isEmailMismatch(error: { code?: string; message?: string } | null): boo
 
 export default function ChatGateway({ token }: { token: string }) {
   const [phase, setPhase] = useState<Phase>('resolving');
-  const [info, setInfo] = useState<ChatContext | null>(null);
+  const [info, setInfo] = useState<ChatContextData | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [mismatchEmail, setMismatchEmail] = useState<string | null>(null);
+  const [otpKey, setOtpKey] = useState(0);
   const claimInFlight = useRef(false);
 
-  const claim = useCallback(async (context: ChatContext): Promise<void> => {
+  const claim = useCallback(async (context: ChatContextData): Promise<void> => {
     if (claimInFlight.current) return;
     claimInFlight.current = true;
     setPhase('claiming');
@@ -117,15 +118,15 @@ export default function ChatGateway({ token }: { token: string }) {
       try {
         const supabase = getSupabase();
         const { data, error } = await supabase.rpc('get_chat_context', { p_token: token });
+        const context = (data ?? null) as ChatContext | null;
 
-        if (error || !data?.found) {
-          if (data?.expired) {
+        if (error || !context?.found) {
+          if (context && !context.found && context.expired) {
             setErrorMsg('Deze chat-link is verlopen. In je meest recente e-mail over dit gesprek staat een werkende link.');
           }
           setPhase('invalid');
           return;
         }
-        const context = data as ChatContext;
         setInfo(context);
 
         const { data: { session } } = await supabase.auth.getSession();
@@ -145,6 +146,8 @@ export default function ChatGateway({ token }: { token: string }) {
   async function handleSwitchAccount() {
     await getSupabase().auth.signOut();
     setMismatchEmail(null);
+    // Remount OtpGate zodat step/email/code resetten naar het begin.
+    setOtpKey((k) => k + 1);
   }
 
   if (phase === 'resolving' || phase === 'claiming') {
@@ -195,6 +198,7 @@ export default function ChatGateway({ token }: { token: string }) {
             </div>
           )}
           <OtpGate
+            key={otpKey}
             supabase={getSupabase()}
             onVerified={() => { void claim(info); }}
           />

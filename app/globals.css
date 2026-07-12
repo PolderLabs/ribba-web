@@ -861,7 +861,7 @@ a.text-link:hover {
 
 .chat-bubble p {
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-bubble-own {

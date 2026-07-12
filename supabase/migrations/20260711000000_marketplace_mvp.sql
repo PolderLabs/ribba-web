@@ -312,8 +312,13 @@ BEGIN
 
   -- Token-expiry: verlopen links werken niet meer voor nieuwe bezoekers,
   -- maar wie zijn kant al claimde behoudt toegang (RLS dekt de data toch al).
-  v_claimed_by_caller := (v_role = 'rijschool' AND v_rec.rijschool_user_id IS NOT NULL AND v_rec.rijschool_user_id = auth.uid())
-    OR (v_role = 'leerling' AND v_inq.leerling_user_id IS NOT NULL AND v_inq.leerling_user_id = auth.uid());
+  -- coalesce: bij een anonieme caller is auth.uid() NULL en zou de expressie
+  -- NULL opleveren — NOT NULL is NULL, waardoor de expiry-check hieronder
+  -- stilletjes overgeslagen zou worden.
+  v_claimed_by_caller := coalesce(
+    (v_role = 'rijschool' AND v_rec.rijschool_user_id IS NOT NULL AND v_rec.rijschool_user_id = auth.uid())
+    OR (v_role = 'leerling' AND v_inq.leerling_user_id IS NOT NULL AND v_inq.leerling_user_id = auth.uid()),
+    false);
   IF now() > v_rec.chat_tokens_expire_at AND NOT v_claimed_by_caller THEN
     RETURN jsonb_build_object('found', false, 'expired', true);
   END IF;
