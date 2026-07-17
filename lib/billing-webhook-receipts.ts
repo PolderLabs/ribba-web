@@ -15,12 +15,34 @@
 // gestuurd door side_effect_stage, zodat een receipt met stage >= subscription_created
 // NOOIT een tweede customerSubscriptions.create kan triggeren.
 //
+// Stage-gebruik per event_kind (Fase 1 Billing Engine):
+//   setup_payment_paid       claimed → subscription_created → license_updated → completed
+//   recurring_payment_paid   claimed → license_updated → completed (beschermt de
+//                            period_end-write; de geschreven waarde is bovendien
+//                            deterministisch afgeleid van first_received_at)
+//   recurring_payment_failed claimed → license_updated → completed (beschermt de
+//                            failed_payment_count-increment tegen dubbele telling)
+//
+// first_received_at is IMMUTABEL over herclaims heen (alleen last_received_at,
+// processing_started_at en attempt_count muteren bij een herclaim). Daardoor is
+// het bruikbaar als deterministisch anker per extern event: elke run van
+// hetzelfde Payment ID leidt dezelfde marker-/periodewaarde af.
+//
 // Zie docs: herzien architectuurontwerp v2 (billing fase 2, webhook-idempotentie).
 
 import { createClient } from '@supabase/supabase-js';
 
 const PROVIDER = 'mollie';
 export const SETUP_EVENT_KIND = 'setup_payment_paid';
+// Fase 1 Billing Engine: recurring-webhooks krijgen dezelfde claim-bescherming.
+// external_event_id blijft altijd het originele Mollie Payment ID.
+export const RECURRING_PAID_EVENT_KIND = 'recurring_payment_paid';
+export const RECURRING_FAILED_EVENT_KIND = 'recurring_payment_failed';
+
+export type WebhookEventKind =
+  | typeof SETUP_EVENT_KIND
+  | typeof RECURRING_PAID_EVENT_KIND
+  | typeof RECURRING_FAILED_EVENT_KIND;
 
 // Een processing-receipt ouder dan dit is vermoedelijk een gecrashte run en mag
 // door een volgende delivery worden overgenomen (herclaim + recovery-pad).
@@ -70,10 +92,13 @@ function staleCutoffIso(): string {
 }
 
 /**
- * Atomaire claim voor een setup-payment webhook. Aanroepen VÓÓR elke side-effect.
- * Throwt bij DB-fouten — de caller moet dan 500 retourneren.
+ * Atomaire claim voor een billing-webhook-event. Aanroepen VÓÓR elke
+ * side-effect. Throwt bij DB-fouten — de caller moet dan 500 retourneren.
+ * Zelfde semantiek voor alle event-kinds; de unique constraint
+ * (provider, event_kind, external_event_id) maakt de claim atomair.
  */
-export async function claimSetupWebhook(params: {
+export async function claimWebhookEvent(params: {
+  eventKind: WebhookEventKind;
   paymentId: string;
   schoolId: string;
   fingerprint: string;
@@ -88,7 +113,7 @@ export async function claimSetupWebhook(params: {
     .upsert(
       {
         provider: PROVIDER,
-        event_kind: SETUP_EVENT_KIND,
+        event_kind: params.eventKind,
         external_event_id: params.paymentId,
         school_id: params.schoolId,
         status: 'processing',
@@ -107,7 +132,7 @@ export async function claimSetupWebhook(params: {
   }
 
   // Stap 2 — bestaande receipt lezen en per status handelen.
-  const existing = await fetchReceipt(params.paymentId);
+  const existing = await fetchReceipt(params.eventKind, params.paymentId);
 
   if (existing.status === 'succeeded' || existing.status === 'discarded') {
     await bumpAttempt(existing);
@@ -126,7 +151,7 @@ export async function claimSetupWebhook(params: {
       attempt_count: existing.attempt_count + 1,
     })
     .eq('provider', PROVIDER)
-    .eq('event_kind', SETUP_EVENT_KIND)
+    .eq('event_kind', params.eventKind)
     .eq('external_event_id', params.paymentId)
     .or(`status.eq.failed,and(status.eq.processing,processing_started_at.lt.${staleCutoffIso()})`)
     .select();
@@ -140,12 +165,24 @@ export async function claimSetupWebhook(params: {
 
   // Herclaim verloren: óf een concurrent won 'm net, óf de receipt is jong-processing.
   // Nog één keer lezen voor het geval de concurrent inmiddels terminaal is.
-  const after = await fetchReceipt(params.paymentId);
+  const after = await fetchReceipt(params.eventKind, params.paymentId);
   if (after.status === 'succeeded' || after.status === 'discarded') {
     await bumpAttempt(after);
     return { outcome: 'already_terminal', receipt: after };
   }
   return { outcome: 'in_flight' };
+}
+
+/**
+ * Atomaire claim voor een setup-payment webhook. Aanroepen VÓÓR elke side-effect.
+ * Throwt bij DB-fouten — de caller moet dan 500 retourneren.
+ */
+export async function claimSetupWebhook(params: {
+  paymentId: string;
+  schoolId: string;
+  fingerprint: string;
+}): Promise<ClaimResult> {
+  return claimWebhookEvent({ eventKind: SETUP_EVENT_KIND, ...params });
 }
 
 // ── Fencing ────────────────────────────────────────────────────────────────
@@ -195,6 +232,39 @@ export async function advanceReceiptStage(
   }
   if (!data || data.length === 0) {
     throw new Error(`receipt stage advance (${stage}): ownership lost or unexpected state`);
+  }
+}
+
+/**
+ * Recurring-pad (paid én failed): claimed → license_updated in één gefencede
+ * update. Beschermt de license-write van het pad: een herclaim die deze stage
+ * aantreft, weet dat de write al is toegepast en voert hem nooit opnieuw uit
+ * (failed: teller-increment; paid: period_end/teller-reset).
+ * result_subscription_id is verplicht — de DB-constraint
+ * (result_required_check) eist een resultaat vanaf deze stage.
+ * Throwt bij DB-fout én bij 0 geraakte rijen.
+ */
+export async function advanceReceiptClaimedToLicenseUpdated(
+  receiptId: string,
+  claimToken: string,
+  resultSubscriptionId: string,
+): Promise<void> {
+  const { data, error } = await getSupabase()
+    .from('billing_webhook_receipts')
+    .update({
+      side_effect_stage: 'license_updated',
+      result_subscription_id: resultSubscriptionId,
+    })
+    .eq('id', receiptId)
+    .eq('status', 'processing')
+    .eq('processing_started_at', claimToken)
+    .eq('side_effect_stage', 'claimed')
+    .select();
+  if (error) {
+    throw new Error(`receipt stage advance (claimed→license_updated) failed: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error('receipt stage advance (claimed→license_updated): ownership lost or unexpected state');
   }
 }
 
@@ -279,12 +349,12 @@ export async function markReceiptDiscarded(receiptId: string, claimToken: string
   }
 }
 
-async function fetchReceipt(paymentId: string): Promise<WebhookReceipt> {
+async function fetchReceipt(eventKind: WebhookEventKind, paymentId: string): Promise<WebhookReceipt> {
   const { data, error } = await getSupabase()
     .from('billing_webhook_receipts')
     .select('*')
     .eq('provider', PROVIDER)
-    .eq('event_kind', SETUP_EVENT_KIND)
+    .eq('event_kind', eventKind)
     .eq('external_event_id', paymentId)
     .single();
   if (error || !data) {

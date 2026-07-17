@@ -25,7 +25,9 @@ mock.module('@supabase/supabase-js', {
 
 const {
   claimSetupWebhook,
+  claimWebhookEvent,
   advanceReceiptStage,
+  advanceReceiptClaimedToLicenseUpdated,
   markReceiptSucceeded,
   markReceiptFailed,
   markReceiptDiscarded,
@@ -298,4 +300,61 @@ test('herclaim-conditie: alleen failed of stale-processing, en bump raakt status
   await claimSetupWebhook(CLAIM_PARAMS);
   const bumpOp = currentClient.calls[2].ops.find(([m]) => m === 'update');
   assert.deepEqual(Object.keys(bumpOp[1]).sort(), ['attempt_count', 'last_received_at']);
+});
+
+// ── Fase 1: recurring event-kinds ───────────────────────────────────────────
+
+test('claimWebhookEvent: recurring kinds schrijven de juiste event_kind met het Mollie Payment ID als sleutel', async () => {
+  for (const eventKind of ['recurring_payment_paid', 'recurring_payment_failed']) {
+    currentClient = makeClient([
+      { data: [receiptRow({ event_kind: eventKind })], error: null },
+    ]);
+    const result = await claimWebhookEvent({ eventKind, ...CLAIM_PARAMS });
+    assert.equal(result.outcome, 'claimed');
+    const upsertRow = currentClient.calls[0].ops.find(([m]) => m === 'upsert')[1];
+    assert.equal(upsertRow.event_kind, eventKind);
+    assert.equal(upsertRow.external_event_id, 'tr_test123');
+    assert.equal(upsertRow.side_effect_stage, 'claimed');
+  }
+});
+
+test('claimWebhookEvent: fetch en herclaim filteren op de opgegeven event_kind (geen cross-kind hits)', async () => {
+  const failedRow = receiptRow({ event_kind: 'recurring_payment_failed', status: 'failed' });
+  currentClient = makeClient([
+    { data: [], error: null },                                        // conflict
+    { data: failedRow, error: null },                                 // fetch
+    { data: [{ ...failedRow, status: 'processing' }], error: null },  // herclaim
+  ]);
+  const result = await claimWebhookEvent({ eventKind: 'recurring_payment_failed', ...CLAIM_PARAMS });
+  assert.equal(result.outcome, 'reclaimed');
+  for (const callIdx of [1, 2]) {
+    const conds = eqConditions(currentClient.calls[callIdx]);
+    assert.equal(conds.event_kind, 'recurring_payment_failed');
+  }
+});
+
+test('claimSetupWebhook blijft een dunne wrapper op setup_payment_paid', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await claimSetupWebhook(CLAIM_PARAMS);
+  const upsertRow = currentClient.calls[0].ops.find(([m]) => m === 'upsert')[1];
+  assert.equal(upsertRow.event_kind, 'setup_payment_paid');
+});
+
+test('advanceReceiptClaimedToLicenseUpdated: gefenced, alleen vanaf claimed, schrijft stage + verplichte correlatie in één update', async () => {
+  currentClient = makeClient([{ data: [receiptRow()], error: null }]);
+  await advanceReceiptClaimedToLicenseUpdated('rcpt-1', TOKEN, 'sub_A');
+  const call = currentClient.calls[0];
+  const op = call.ops.find(([m]) => m === 'update');
+  assert.equal(op[1].side_effect_stage, 'license_updated');
+  assert.equal(op[1].result_subscription_id, 'sub_A');
+  const conds = eqConditions(call);
+  assert.equal(conds.status, 'processing');
+  assert.equal(conds.processing_started_at, TOKEN);
+  assert.equal(conds.side_effect_stage, 'claimed');
+
+  currentClient = makeClient([{ data: [], error: null }]);
+  await assert.rejects(() => advanceReceiptClaimedToLicenseUpdated('rcpt-1', TOKEN, 'sub_A'), /ownership lost/);
+
+  currentClient = makeClient([{ data: null, error: { message: 'boom' } }]);
+  await assert.rejects(() => advanceReceiptClaimedToLicenseUpdated('rcpt-1', TOKEN, 'sub_A'), /claimed→license_updated/);
 });
