@@ -11,10 +11,14 @@ import {
 import { logBillingEvent } from '@/lib/billing-events';
 import {
   claimSetupWebhook,
+  claimWebhookEvent,
   advanceReceiptStage,
+  advanceReceiptClaimedToLicenseUpdated,
   markReceiptSucceeded,
   markReceiptFailed,
   markReceiptDiscarded,
+  RECURRING_PAID_EVENT_KIND,
+  RECURRING_FAILED_EVENT_KIND,
 } from '@/lib/billing-webhook-receipts';
 import {
   isPaidPlan,
@@ -579,19 +583,90 @@ export async function POST(request: NextRequest) {
 
     // Handle recurring payments — extend period_end by 1 month + reset failure counter
     if (payment.status === 'paid' && type === 'recurring') {
-      // B2: pre-fetch huidige license state om te controleren of de rijschool
-      // inmiddels heeft opgezegd. Zo ja: dit is een onterechte incasso die
-      // period_end niet meer mag verlengen (zou toegang na opzegging verlengen).
-      const { data: licenseState } = await getSupabase()
+      // ── Canonieke idempotentie-claim (Fase 1): vóór élke side-effect.
+      // external_event_id = het originele Mollie Payment ID. Zelfde
+      // fingerprint-velden als het setup-pad. Claim-/DB-fout throwt → 500. ──
+      const fingerprint = createHash('sha256')
+        .update(
+          JSON.stringify({
+            id: payment.id,
+            status: payment.status,
+            customer_id: payment.customerId ?? null,
+            school_id,
+            plan,
+            metadata_type: type,
+          }),
+        )
+        .digest('hex');
+
+      const claim = await claimWebhookEvent({
+        eventKind: RECURRING_PAID_EVENT_KIND,
+        paymentId,
+        schoolId: school_id,
+        fingerprint,
+      });
+
+      if (claim.outcome === 'already_terminal') {
+        // Reeds verwerkt (succeeded) of bewust genegeerd (discarded): no-op.
+        // 200 zodat Mollie stopt met retryen — géén tweede license-update,
+        // géén mails, géén admin-notify. Alleen audit.
+        await logBillingEvent({
+          school_id,
+          event_type: 'ignored_duplicate_recurring_webhook',
+          source: 'mollie-webhook',
+          payload: {
+            plan,
+            payment_id: paymentId,
+            payment_status: 'paid',
+            receipt_status: claim.receipt.status,
+            receipt_stage: claim.receipt.side_effect_stage,
+            attempt_count: claim.receipt.attempt_count,
+          },
+        });
+        return NextResponse.json({ status: 'ok' });
+      }
+
+      if (claim.outcome === 'in_flight') {
+        // Een andere run is (vermoedelijk) nog bezig. 500 → Mollie retryt later.
+        console.warn(`Recurring-paid webhook ${paymentId}: verwerking al in flight, retry later`);
+        return NextResponse.json({ status: 'in_flight' }, { status: 500 });
+      }
+
+      const receipt = claim.receipt;
+      const claimToken = receipt.processing_started_at;
+
+      // B2: license state ophalen om te controleren of de rijschool inmiddels
+      // heeft opgezegd. Een DB-fout is retrybaar (receipt failed + 500 —
+      // zelfde receipts-contract als setup; een stil 200 zou de betaling
+      // definitief onverwerkt laten). Een aantoonbaar ONTBREKENDE license is
+      // géén retrygeval: hoofdgedrag van main blijft 200 (er valt niets te
+      // verlengen); de geclaimde receipt wordt discarded (= bewust genegeerd,
+      // nul side-effects) zodat redeliveries als already_terminal eindigen.
+      const { data: licenseState, error: licenseError } = await getSupabase()
         .from('instructor_licenses')
-        .select('id, cancelled_at, period_end, billing_plan')
+        .select('id, cancelled_at, period_end, billing_plan, external_subscription_id')
         .eq('school_id', school_id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (licenseState?.cancelled_at) {
+      if (licenseError) {
+        await markReceiptFailed(receipt.id, claimToken, `license lookup failed: ${licenseError.message}`);
+        return NextResponse.json({ status: 'license_lookup_failed' }, { status: 500 });
+      }
+      if (!licenseState) {
+        await markReceiptDiscarded(receipt.id, claimToken);
+        await logBillingEvent({
+          school_id,
+          event_type: 'recurring_webhook_discarded',
+          source: 'mollie-webhook',
+          payload: { plan, payment_id: paymentId, payment_status: 'paid', reason: 'active_license_not_found' },
+        });
+        return NextResponse.json({ status: 'ok' });
+      }
+
+      if (licenseState.cancelled_at) {
         // Opgezegd → NIET verlengen, NIET failed_payment_count resetten,
         // NIET het normale recurring_payment_paid event loggen (zou tegenstrijdig
         // zijn met _ignored). Alleen audit + admin-notify. Webhook returnt
@@ -599,6 +674,11 @@ export async function POST(request: NextRequest) {
         console.warn(
           `Recurring payment ${paymentId} received for school ${school_id} AFTER cancellation (${licenseState.cancelled_at}) — period_end NOT extended`,
         );
+
+        // Terminaal genegeerd: discarded (alleen geldig vanaf stage 'claimed',
+        // vóór enige side-effect). Een redelivery eindigt dan als
+        // already_terminal — zonder tweede admin-notify.
+        await markReceiptDiscarded(receipt.id, claimToken);
 
         await logBillingEvent({
           school_id,
@@ -641,18 +721,97 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Normaal pad: verlengen + counter reset + bestaand billing_event.
-        const newPeriodEnd = new Date();
+        // De license-update en de receipt-stage-advance gebeuren sinds Fase
+        // 1B/1C ATOMAIR in de database via de RPC
+        // apply_recurring_paid_and_advance_receipt (ribbaPro-migratie
+        // 20260717120000): beide writes committen samen of geen van beide.
+        // Receipt-stage license_updated is daardoor het harde,
+        // payment-specifieke bewijs dat deze betaling is toegepast — er
+        // bestaat geen heuristiek meer op de bestaande period_end.
+
+        // Correlatie voor de receipt (DB-constraint eist een resultaat vanaf
+        // stage license_updated). Fallback-keten payment → license → receipt;
+        // die laatste dekt een herclaim nadat een eerdere run de correlatie
+        // al op de receipt vastlegde. Zonder correlatie → failed + 500.
+        const resultSubscriptionId =
+          payment.subscriptionId ??
+          licenseState.external_subscription_id ??
+          receipt.result_subscription_id ??
+          null;
+        if (!resultSubscriptionId) {
+          await markReceiptFailed(receipt.id, claimToken, 'no_subscription_correlation');
+          return NextResponse.json({ status: 'no_subscription_correlation' }, { status: 500 });
+        }
+
+        // Deterministische periodewaarde: de formule blijft "verwerkings-
+        // moment + 1 maand", vastgepind op receipt.first_received_at (eerste
+        // delivery van dít Payment ID, immutabel over herclaims heen) zodat
+        // elke retry exact dezelfde waarde aanlevert.
+        const newPeriodEnd = new Date(receipt.first_received_at);
         newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
 
-        await getSupabase()
-          .from('instructor_licenses')
-          .update({
-            period_end: newPeriodEnd.toISOString(),
-            failed_payment_count: 0,
-            last_failed_payment_at: null,
-          })
-          .eq('school_id', school_id)
-          .eq('status', 'active');
+        const { data: rpcData, error: rpcError } = await getSupabase().rpc(
+          'apply_recurring_paid_and_advance_receipt',
+          {
+            p_provider: 'mollie',
+            p_event_kind: RECURRING_PAID_EVENT_KIND,
+            p_external_event_id: paymentId,
+            p_claim_token: claimToken,
+            p_license_id: licenseState.id,
+            p_new_period_end: newPeriodEnd.toISOString(),
+            p_result_subscription_id: resultSubscriptionId,
+          },
+        );
+
+        if (rpcError) {
+          // Transport-/databasefout. De RPC-transactie garandeert dat er geen
+          // halve license/stage-write is achtergebleven — géén fallback naar
+          // losse writes. Receipt op failed (gefenced) → 500, Mollie retryt.
+          await markReceiptFailed(receipt.id, claimToken, `rpc failed: ${rpcError.message}`);
+          return NextResponse.json({ status: 'rpc_failed' }, { status: 500 });
+        }
+
+        const outcome = (rpcData as { outcome?: string } | null)?.outcome;
+
+        if (outcome === 'fenced') {
+          // Eigenaarschap verloren: een ander heeft de receipt ná staleness
+          // herclaimd, of de receipt is inmiddels terminaal. Deze run is een
+          // zombie en mag de nieuwe eigenaar niet storen: nul side-effects,
+          // géén markReceiptFailed. 500 → Mollie retryt; was de receipt
+          // terminaal, dan eindigt die retry via de claim als
+          // already_terminal → 200 (zelfherstellend).
+          console.warn(
+            `Recurring-paid RPC ${paymentId}: fenced (receipt_status=${(rpcData as { receipt_status?: string } | null)?.receipt_status ?? 'onbekend'}) — nul side-effects`,
+          );
+          return NextResponse.json({ status: 'rpc_fenced' }, { status: 500 });
+        }
+
+        if (outcome !== 'applied' && outcome !== 'already_advanced') {
+          // receipt_not_found / license_not_found / license_school_mismatch /
+          // unexpected_stage / invalid_input / onbekend: de RPC heeft per
+          // contract nul writes gedaan. Geen heuristische herstelroute —
+          // zichtbaar maken (failed, gefenced no-op als eigenaarschap weg is)
+          // en retrybaar laten via 500; Mollie begrenst zelf het aantal
+          // redeliveries, daarna blijft de failed receipt als signaal staan.
+          await markReceiptFailed(receipt.id, claimToken, `rpc outcome: ${String(outcome)}`);
+          return NextResponse.json(
+            { status: 'rpc_rejected', outcome: String(outcome) },
+            { status: 500 },
+          );
+        }
+
+        // applied: beide writes zijn zojuist samen gecommit.
+        // already_advanced: een eerdere run committe ze al atomair — de RPC
+        // voert dan per contract géén tweede license-update uit; alleen de
+        // terminalisering resteert.
+
+        // Terminaal succes vóór de (niet-kritische) audit-communicatie —
+        // zelfde "correctness vóór communicatie"-grens als het setup-pad.
+        // Het functionele event staat ná deze grens en wordt dus maximaal
+        // éénmaal geschreven: een latere redelivery strandt al bij de claim
+        // (already_terminal) en een crash vóór dit punt heeft nog geen event
+        // gelogd.
+        await markReceiptSucceeded(receipt.id, claimToken);
 
         console.log(`Recurring payment received for school ${school_id}, period_end extended to ${newPeriodEnd.toISOString()}`);
 
@@ -660,7 +819,14 @@ export async function POST(request: NextRequest) {
           school_id,
           event_type: 'recurring_payment_paid',
           source: 'mollie-webhook',
-          payload: { plan, payment_id: paymentId, new_period_end: newPeriodEnd.toISOString() },
+          payload: {
+            plan,
+            payment_id: paymentId,
+            new_period_end: newPeriodEnd.toISOString(),
+            external_subscription_id: resultSubscriptionId,
+            recovered: claim.recovered,
+            rpc_outcome: outcome,
+          },
         });
       }
     }
@@ -671,32 +837,224 @@ export async function POST(request: NextRequest) {
     if (payment.status === 'failed' && type === 'recurring') {
       console.warn(`Recurring payment FAILED for school ${school_id}`);
 
-      const { data: license } = await getSupabase()
+      // ── Canonieke idempotentie-claim (Fase 1): vóór élke side-effect.
+      // Beschermt de failed_payment_count-increment en de escalatieladder
+      // tegen dubbele webhooks: een redelivery mag de teller nooit opnieuw
+      // verhogen, nooit opnieuw cancelen/opschorten en geen dubbele mails
+      // veroorzaken. ──
+      const fingerprint = createHash('sha256')
+        .update(
+          JSON.stringify({
+            id: payment.id,
+            status: payment.status,
+            customer_id: payment.customerId ?? null,
+            school_id,
+            plan,
+            metadata_type: type,
+          }),
+        )
+        .digest('hex');
+
+      const claim = await claimWebhookEvent({
+        eventKind: RECURRING_FAILED_EVENT_KIND,
+        paymentId,
+        schoolId: school_id,
+        fingerprint,
+      });
+
+      if (claim.outcome === 'already_terminal') {
+        await logBillingEvent({
+          school_id,
+          event_type: 'ignored_duplicate_recurring_webhook',
+          source: 'mollie-webhook',
+          payload: {
+            plan,
+            payment_id: paymentId,
+            payment_status: 'failed',
+            receipt_status: claim.receipt.status,
+            receipt_stage: claim.receipt.side_effect_stage,
+            attempt_count: claim.receipt.attempt_count,
+          },
+        });
+        return NextResponse.json({ status: 'ok' });
+      }
+
+      if (claim.outcome === 'in_flight') {
+        console.warn(`Recurring-failed webhook ${paymentId}: verwerking al in flight, retry later`);
+        return NextResponse.json({ status: 'in_flight' }, { status: 500 });
+      }
+
+      const receipt = claim.receipt;
+      const claimToken = receipt.processing_started_at;
+      let stage = receipt.side_effect_stage;
+
+      const { data: license, error: licenseError } = await getSupabase()
         .from('instructor_licenses')
-        .select('id, failed_payment_count, mollie_customer_id, external_subscription_id')
+        .select('id, failed_payment_count, last_failed_payment_at, mollie_customer_id, external_subscription_id')
         .eq('school_id', school_id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (license) {
-        const newCount = (license.failed_payment_count ?? 0) + 1;
+      if (licenseError) {
+        await markReceiptFailed(receipt.id, claimToken, `license lookup failed: ${licenseError.message}`);
+        return NextResponse.json({ status: 'license_lookup_failed' }, { status: 500 });
+      }
+      if (!license) {
+        // Geen actieve license = niets te tellen of op te schorten; main gaf
+        // hier ook 200 (stille skip). Terminaal genegeerd via discarded —
+        // zelfde afhandeling als het paid-pad zonder license, en geen
+        // 500-retry-storm voor een blijvend lege situatie.
+        await markReceiptDiscarded(receipt.id, claimToken);
+        await logBillingEvent({
+          school_id,
+          event_type: 'recurring_webhook_discarded',
+          source: 'mollie-webhook',
+          payload: { plan, payment_id: paymentId, payment_status: 'failed', reason: 'active_license_not_found' },
+        });
+        return NextResponse.json({ status: 'ok' });
+      }
 
-        await getSupabase()
+      // Teller: exact één functionele verwerking per Mollie Payment ID.
+      let effectiveCount: number;
+      if (stage === 'claimed') {
+        // Correlatie voor de receipt (DB-constraint eist een resultaat vanaf
+        // stage license_updated): de subscription waar deze incasso bij hoort.
+        const resultSubscriptionId =
+          payment.subscriptionId ?? license.external_subscription_id ?? null;
+        if (!resultSubscriptionId) {
+          await markReceiptFailed(receipt.id, claimToken, 'no_subscription_correlation');
+          return NextResponse.json({ status: 'no_subscription_correlation' }, { status: 500 });
+        }
+
+        // Recovery-consult voor het blinde venster tussen increment en
+        // stage-advance: de increment-write zet last_failed_payment_at op
+        // receipt.first_received_at — het verwerkingsmoment van de eerste
+        // delivery. Dat behoudt de bestaande betekenis van de kolom
+        // (verwerkingstijd; in het normale pad identiek aan now() op
+        // milliseconden na) én is deterministisch per Payment ID, want
+        // first_received_at is immutabel over herclaims heen en per receipt
+        // uniek — twee verschillende failed payments kunnen elkaars marker
+        // dus nooit matchen, ook niet bij (bijna) gelijke Mollie-timestamps.
+        // Treft een herclaim de marker aan, dan heeft de gecrashte run de
+        // teller al verhoogd — niet nogmaals verhogen.
+        const markerIso = new Date(receipt.first_received_at).toISOString();
+        const alreadyCounted = Boolean(
+          claim.recovered &&
+            license.last_failed_payment_at &&
+            new Date(license.last_failed_payment_at).getTime() ===
+              new Date(receipt.first_received_at).getTime(),
+        );
+
+        if (alreadyCounted) {
+          effectiveCount = license.failed_payment_count ?? 0;
+        } else {
+          effectiveCount = (license.failed_payment_count ?? 0) + 1;
+          const { data: incRows, error: incError } = await getSupabase()
+            .from('instructor_licenses')
+            .update({
+              failed_payment_count: effectiveCount,
+              last_failed_payment_at: markerIso,
+            })
+            .eq('id', license.id)
+            .select();
+          if (incError) {
+            await markReceiptFailed(receipt.id, claimToken, `failure count update failed: ${incError.message}`);
+            return NextResponse.json({ status: 'count_update_failed' }, { status: 500 });
+          }
+          if (!incRows || incRows.length !== 1) {
+            await markReceiptFailed(
+              receipt.id,
+              claimToken,
+              `failure count update raakte ${incRows?.length ?? 0} rijen (verwacht: exact 1)`,
+            );
+            return NextResponse.json({ status: 'count_update_failed' }, { status: 500 });
+          }
+        }
+
+        await advanceReceiptClaimedToLicenseUpdated(receipt.id, claimToken, resultSubscriptionId);
+        stage = 'license_updated';
+      } else {
+        // Recovery vanaf license_updated: de gecrashte run heeft de teller al
+        // verhoogd — de gelezen stand ís de effectieve stand. De receipt
+        // draagt het correlatie-resultaat al sinds de eerdere stage-advance.
+        effectiveCount = license.failed_payment_count ?? 0;
+      }
+
+      await logBillingEvent({
+        school_id,
+        event_type: 'recurring_payment_failed',
+        source: 'mollie-webhook',
+        payload: {
+          plan,
+          payment_id: paymentId,
+          attempt: effectiveCount,
+          limit: FAILED_PAYMENT_LIMIT,
+          recovered: claim.recovered,
+        },
+      });
+
+      if (effectiveCount >= FAILED_PAYMENT_LIMIT) {
+        // Cancel de Mollie subscription (bestaand gedrag: falen is niet
+        // fataal; een al gecancelde sub geeft 410/422 en is de facto
+        // idempotent). Bij recovery is external_subscription_id na een
+        // eerdere suspensie null → cancel wordt dan overgeslagen.
+        if (license.external_subscription_id && license.mollie_customer_id) {
+          try {
+            await getMollie().customerSubscriptions.cancel(
+              license.external_subscription_id,
+              { customerId: license.mollie_customer_id },
+            );
+          } catch (cancelErr) {
+            console.error('Could not cancel Mollie subscription after failures:', cancelErr);
+          }
+        }
+
+        // Markeer license als opgeschort: terug naar trial, behoud customer-id
+        // voor reactivatie. Correctness-kritisch: fout of 0 rijen → receipt
+        // failed + 500 (retry hervat vanaf license_updated, zonder de teller
+        // opnieuw te verhogen). De update is idempotent bij een re-run.
+        const { data: suspendRows, error: suspendError } = await getSupabase()
           .from('instructor_licenses')
           .update({
-            failed_payment_count: newCount,
-            last_failed_payment_at: new Date().toISOString(),
+            billing_plan: 'trial',
+            is_trial: true,
+            external_subscription_id: null,
+            cancelled_at: new Date().toISOString(),
           })
-          .eq('id', license.id);
+          .eq('id', license.id)
+          .select();
+
+        if (suspendError) {
+          await markReceiptFailed(receipt.id, claimToken, `suspend update failed: ${suspendError.message}`);
+          return NextResponse.json({ status: 'suspend_failed' }, { status: 500 });
+        }
+        if (!suspendRows || suspendRows.length !== 1) {
+          await markReceiptFailed(
+            receipt.id,
+            claimToken,
+            `suspend update raakte ${suspendRows?.length ?? 0} rijen (verwacht: exact 1)`,
+          );
+          return NextResponse.json({ status: 'suspend_failed' }, { status: 500 });
+        }
 
         await logBillingEvent({
           school_id,
-          event_type: 'recurring_payment_failed',
+          event_type: 'subscription_suspended',
           source: 'mollie-webhook',
-          payload: { plan, payment_id: paymentId, attempt: newCount, limit: FAILED_PAYMENT_LIMIT },
+          payload: {
+            plan,
+            payment_id: paymentId,
+            failed_payment_count: effectiveCount,
+            limit: FAILED_PAYMENT_LIMIT,
+            cancelled_external_subscription_id: license.external_subscription_id,
+          },
         });
+
+        // Terminaal succes vóór de mails (verlies boven duplicatie) — een
+        // crash hierna kan mails kosten, nooit een tweede suspensie.
+        await markReceiptSucceeded(receipt.id, claimToken);
 
         const { data: schoolRow } = await getSupabase()
           .from('drivingschools')
@@ -704,77 +1062,48 @@ export async function POST(request: NextRequest) {
           .eq('id', school_id)
           .maybeSingle();
 
-        if (newCount >= FAILED_PAYMENT_LIMIT) {
-          // Cancel de Mollie subscription
-          if (license.external_subscription_id && license.mollie_customer_id) {
-            try {
-              await getMollie().customerSubscriptions.cancel(
-                license.external_subscription_id,
-                { customerId: license.mollie_customer_id },
-              );
-            } catch (cancelErr) {
-              console.error('Could not cancel Mollie subscription after failures:', cancelErr);
-            }
-          }
+        if (schoolRow?.email) {
+          await sendSubscriptionSuspendedMail(school_id, schoolRow.email, schoolRow.name).catch((e) =>
+            console.error('School suspended mail failed:', e),
+          );
+        }
 
-          // Markeer license als opgeschort: terug naar trial, behoud customer-id voor reactivatie
-          await getSupabase()
-            .from('instructor_licenses')
-            .update({
-              billing_plan: 'trial',
-              is_trial: true,
-              external_subscription_id: null,
-              cancelled_at: new Date().toISOString(),
-            })
-            .eq('id', license.id);
+        if (schoolRow) {
+          await sendAdminNotification('subscription_suspended', {
+            id: school_id,
+            name: schoolRow.name,
+            email: schoolRow.email,
+            city: schoolRow.city,
+            extra: { failed_payment_count: effectiveCount, payment_id: paymentId },
+          }).catch((e) => console.error('Admin notify (subscription_suspended) failed:', e));
+        }
+      } else {
+        // Terminaal succes vóór de mails (verlies boven duplicatie).
+        await markReceiptSucceeded(receipt.id, claimToken);
 
-          await logBillingEvent({
+        const { data: schoolRow } = await getSupabase()
+          .from('drivingschools')
+          .select('name, email, city')
+          .eq('id', school_id)
+          .maybeSingle();
+
+        if (schoolRow?.email) {
+          await sendRecurringPaymentFailedMail(
             school_id,
-            event_type: 'subscription_suspended',
-            source: 'mollie-webhook',
-            payload: {
-              plan,
-              payment_id: paymentId,
-              failed_payment_count: newCount,
-              limit: FAILED_PAYMENT_LIMIT,
-              cancelled_external_subscription_id: license.external_subscription_id,
-            },
-          });
+            schoolRow.email,
+            schoolRow.name,
+            effectiveCount,
+          ).catch((e) => console.error('School payment-failed mail failed:', e));
+        }
 
-          if (schoolRow?.email) {
-            await sendSubscriptionSuspendedMail(school_id, schoolRow.email, schoolRow.name).catch((e) =>
-              console.error('School suspended mail failed:', e),
-            );
-          }
-
-          if (schoolRow) {
-            await sendAdminNotification('subscription_suspended', {
-              id: school_id,
-              name: schoolRow.name,
-              email: schoolRow.email,
-              city: schoolRow.city,
-              extra: { failed_payment_count: newCount, payment_id: paymentId },
-            }).catch((e) => console.error('Admin notify (subscription_suspended) failed:', e));
-          }
-        } else {
-          if (schoolRow?.email) {
-            await sendRecurringPaymentFailedMail(
-              school_id,
-              schoolRow.email,
-              schoolRow.name,
-              newCount,
-            ).catch((e) => console.error('School payment-failed mail failed:', e));
-          }
-
-          if (schoolRow) {
-            await sendAdminNotification('recurring_payment_failed', {
-              id: school_id,
-              name: schoolRow.name,
-              email: schoolRow.email,
-              city: schoolRow.city,
-              extra: { attempt: newCount, payment_id: paymentId },
-            }).catch((e) => console.error('Admin notify (recurring_payment_failed) failed:', e));
-          }
+        if (schoolRow) {
+          await sendAdminNotification('recurring_payment_failed', {
+            id: school_id,
+            name: schoolRow.name,
+            email: schoolRow.email,
+            city: schoolRow.city,
+            extra: { attempt: effectiveCount, payment_id: paymentId },
+          }).catch((e) => console.error('Admin notify (recurring_payment_failed) failed:', e));
         }
       }
     }
