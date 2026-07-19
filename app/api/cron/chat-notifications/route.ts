@@ -20,6 +20,13 @@ import type { ChatRole, MessageRow } from '@/lib/marketplace-types';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+// NB: bewust GEEN push-dedupe hier. Ooit sloegen we e-mail over als de
+// ontvanger een actief app-device had ('push dekt het wel'), maar de
+// push-op-berichtevent (ribbaPro#144) verstuurt nog niets — dat gaf
+// app-gebruikers niets (geen push én geen mail). Altijd mailen tot push
+// aantoonbaar werkt; herzie de dedupe SAMEN met #144 (code-wijziging, geen
+// stille flag die we vergeten).
+
 const SETTLE_DELAY_MS = 45 * 1000;          // bericht moet ≥45s oud zijn (anti mid-burst)
 const MIN_MAIL_GAP_MS = 15 * 60 * 1000;     // max 1 mail per kant per 15 min
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // rolling chat-token levensduur
@@ -102,16 +109,13 @@ export async function GET(request: NextRequest) {
 
   const conversations = (candidates ?? []) as unknown as ConversationJoin[];
 
-  // E-mailvoorkeuren + push-status in bulk. Push-status komt uit de bestaande
-  // multi-device `push_tokens`-tabel die de app onderhoudt (SSoT) — wie daar
-  // een device heeft, krijgt push via ribbaPro#144 en dus géén e-mail.
+  // E-mailvoorkeuren in bulk (per-account opt-out uit marketplace_profiles).
   const userIds = [
     ...new Set(
       conversations.flatMap((c) => [c.leerling_user_id, c.rijschool_user_id]).filter((id): id is string => !!id),
     ),
   ];
   const emailPrefs = new Map<string, boolean>();
-  const usersWithPush = new Set<string>();
   if (userIds.length > 0) {
     const { data: profileRows } = await supabase
       .from('marketplace_profiles')
@@ -119,20 +123,6 @@ export async function GET(request: NextRequest) {
       .in('user_id', userIds);
     for (const p of profileRows ?? []) {
       emailPrefs.set(p.user_id, p.email_notifications);
-    }
-
-    const { data: pushRows, error: pushError } = await supabase
-      .from('push_tokens')
-      .select('user_id')
-      .eq('is_active', true)
-      .in('user_id', userIds);
-    if (pushError) {
-      // Tabel(naam) niet beschikbaar → conservatief: niemand als push-gedekt
-      // beschouwen (liever een dubbele notificatie dan geen enkele).
-      console.warn('chat-notifications: push_tokens lookup failed', pushError.message);
-    }
-    for (const p of pushRows ?? []) {
-      usersWithPush.add(p.user_id);
     }
   }
 
@@ -177,16 +167,9 @@ export async function GET(request: NextRequest) {
           skipped++;
           continue;
         }
-        if (sideUserId) {
-          // Actieve push in de app → geen dubbele e-mail (ribbaPro#144 dekt push).
-          if (usersWithPush.has(sideUserId)) {
-            skipped++;
-            continue;
-          }
-          if (emailPrefs.get(sideUserId) === false) {
-            skipped++;
-            continue;
-          }
+        if (sideUserId && emailPrefs.get(sideUserId) === false) {
+          skipped++;
+          continue;
         }
         // Ongeclaimde leerling (geen user_id): altijd mailen — dit is de stap
         // die de leerling voor het eerst de web-chat in brengt.
