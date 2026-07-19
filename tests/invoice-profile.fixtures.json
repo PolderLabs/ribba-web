@@ -1,0 +1,370 @@
+{
+  "version": 1,
+  "comment": "Gedeelde contractvectoren voor invoice-profile. Leidend exemplaar: ribbaPro supabase/functions/_shared/. Byte-identieke kopie in ribba-web/tests/. Wijzig beide in dezelfde werkstroom en werk de checksum in beide testsuites bij.",
+  "invoiceNameFor": [
+    {
+      "case": "eenmanszaak → handelsnaam",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": "Rijschool Voorbeeld"
+      }
+    },
+    {
+      "case": "vof → handelsnaam",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "vof",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": "Rijschool Voorbeeld"
+      }
+    },
+    {
+      "case": "bv → statutaire naam, nooit handelsnaam",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "bv",
+        "legal_name": "Voorbeeld Holding B.V.",
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": "Voorbeeld Holding B.V."
+      }
+    },
+    {
+      "case": "handelsnaam wordt getrimd",
+      "school": {
+        "name": "  Rijschool X  ",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": "Rijschool X"
+      }
+    },
+    {
+      "case": "statutaire naam wordt getrimd",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "bv",
+        "legal_name": "  X B.V.  ",
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": "X B.V."
+      }
+    },
+    {
+      "case": "bv zonder statutaire naam → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "bv",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "BV zonder statutaire naam — factuurnaam kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "bv met lege statutaire naam → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "bv",
+        "legal_name": "   ",
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "BV zonder statutaire naam — factuurnaam kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "legal_form NULL → fout (kan BV verhullen)",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": null,
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Bedrijfsvorm ontbreekt of is onbekend — factuurnaam kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "legal_form onbekend ('BV', hoofdletters) → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "BV",
+        "legal_name": "X B.V.",
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Bedrijfsvorm ontbreekt of is onbekend — factuurnaam kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "eenmanszaak met lege handelsnaam → fout",
+      "school": {
+        "name": "   ",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Handelsnaam ontbreekt — factuurnaam kan niet worden bepaald."
+      }
+    }
+  ],
+  "invoiceAddressFor": [
+    {
+      "case": "zonder billing → hoofdadres met land",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": {
+          "line1": "Bergweg 120",
+          "postal_code": "3037EG",
+          "city": "Rotterdam",
+          "country": "NL"
+        }
+      }
+    },
+    {
+      "case": "legacy-postcode met spatie wordt doorgegeven zoals opgeslagen",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037 EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": {
+          "line1": "Bergweg 120",
+          "postal_code": "3037 EG",
+          "city": "Rotterdam",
+          "country": "NL"
+        }
+      }
+    },
+    {
+      "case": "volledig billing-adres wint van hoofdadres",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "bv",
+        "legal_name": "X B.V.",
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": "Herengracht 1",
+        "billing_postal_code": "1015BA",
+        "billing_city": "Amsterdam"
+      },
+      "expect": {
+        "value": {
+          "line1": "Herengracht 1",
+          "postal_code": "1015BA",
+          "city": "Amsterdam",
+          "country": "NL"
+        }
+      }
+    },
+    {
+      "case": "half billing (alleen adres) → fout, nooit mengen",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": "Herengracht 1",
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Afwijkend factuuradres is onvolledig — vul adres, postcode én plaats in, of geen van drie."
+      }
+    },
+    {
+      "case": "half billing (postcode+plaats) → fout, nooit mengen",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": "1015BA",
+        "billing_city": "Amsterdam"
+      },
+      "expect": {
+        "error": "Afwijkend factuuradres is onvolledig — vul adres, postcode én plaats in, of geen van drie."
+      }
+    },
+    {
+      "case": "land NULL → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": null,
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Land ontbreekt — factuuradres kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "land leeg → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Land ontbreekt — factuuradres kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "plaats NULL → fout",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": null,
+        "country_code": "NL",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "error": "Adres is onvolledig — factuuradres kan niet worden bepaald."
+      }
+    },
+    {
+      "case": "kleingeschreven land wordt NL in het resultaat",
+      "school": {
+        "name": "Rijschool Voorbeeld",
+        "legal_form": "eenmanszaak",
+        "legal_name": null,
+        "address": "Bergweg 120",
+        "postal_code": "3037EG",
+        "city": "Rotterdam",
+        "country_code": "nl",
+        "billing_address": null,
+        "billing_postal_code": null,
+        "billing_city": null
+      },
+      "expect": {
+        "value": {
+          "line1": "Bergweg 120",
+          "postal_code": "3037EG",
+          "city": "Rotterdam",
+          "country": "NL"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,13 @@
 // Factuurprofiel-regels: welke naam en welk adres komen op een factuur
 // (straks: op de Stripe Customer).
 //
+// ⚠️ VOLGEND EXEMPLAAR (besluit B2, ribbaPro
+// docs/design/2026-07-19_customer-sync-contract.md). Het LEIDENDE exemplaar
+// is ribbaPro supabase/functions/_shared/invoice-profile.ts — wijzig eerst
+// dáár, en neem implementatie + tests/invoice-profile.fixtures.json in
+// dezelfde werkstroom hierheen over (incl. de fixture-checksum in
+// tests/invoice-profile-contract.test.mjs).
+//
 // De regel is vastgelegd bij de drivingschools-migratie (ribbaPro,
 // 20260719140000_drivingschools_invoice_profile):
 //
