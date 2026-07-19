@@ -13,7 +13,9 @@
           { "/": "/payment/success" },
           { "/": "/join/*" },
           { "/": "/reset" },
-          { "/": "/reset/*" }
+          { "/": "/reset/*" },
+          { "/": "/i/*", "comment": "marketplace inquiry deep-link, leerling-kant (ribbaPro#139)" },
+          { "/": "/r/*", "comment": "marketplace recipient deep-link, rijschool-kant (ribbaPro#139)" }
         ]
       }
     ]

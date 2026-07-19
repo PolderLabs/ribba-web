@@ -36,6 +36,19 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
 - **Abonnement opzeggen** (knop op `/upgrade`)
 - **Betaalflow** — Mollie iDEAL + SEPA recurring (`/api/checkout`, `/api/mollie-webhook`, `/api/cancel-subscription`)
 - **Leerling-inschrijfpagina per rijschool** (`/[slug]`)
+- **Marketplace web-backend** (Epic ribba.app#35):
+  - `/api/inquiry-submit` — inquiry-intake vanaf de vergelijkingssite (CORS), schrijft `inquiries` + `inquiry_recipients`, stuurt outreach-mails naar rijscholen
+  - `/chat/[token]` — geanonimiseerde web-chat gateway met e-mailverificatie (Supabase Auth OTP), realtime via Supabase Realtime
+  - `/api/cron/chat-notifications` — reply-notificatie e-mails (gebundeld, beide richtingen)
+  - `supabase/migrations/` — schema voor inquiries/conversations/messages/marketplace_profiles
+    **plus de gedeelde SECURITY DEFINER RPC's** (`get_chat_context`, `claim_inquiry`,
+    `claim_inquiry_recipient`, `get_inquiry_for_recipient`, `mark_messages_read`) — web-chat en
+    ribbaPro-app gebruiken exact dezelfde claim/masking-semantiek
+  - **Deep-links voor de app** (ribbaPro#139): mails bevatten twee links — de web-chat
+    (`/chat/{token}`, primaire CTA) en een universal link (`/i/{inquiry_id}` leerling-kant,
+    `/r/{recipient_id}` rijschool-kant). AASA bevat `/i/*` + `/r/*`; zonder app tonen die
+    routes een download-fallback. Kale ids geven geen chat-toegang (claim vereist
+    e-mail-match via de RPC's). Gebruik in mails/QR uitsluitend link.ribba.app-URLs.
 - **Wachtwoord reset** (`/reset`)
 - **iCal proxy** (`/api/ical`)
 - **Legal pagina's voor de Rijschool Planner**:
@@ -97,6 +110,11 @@ Beide de iOS app en deze web-repo praten met **dezelfde Supabase database**:
 | `instructors` | Beide | Beide |
 | `instructor_licenses` | **Web (subscription/betaling)** | Beide |
 | `students` | Beide | Beide |
+| `cbr_rijscholen` | Vergelijkingssite-pipeline | Beide (web leest voor marketplace-outreach) |
+| `inquiries` + `inquiry_recipients` | **Web (`/api/inquiry-submit`) + claim-RPC's** | Beide |
+| `conversations` + `messages` | Beide (web-chat én apps, zelfde bron van waarheid) | Beide |
+| `marketplace_profiles` | Alleen claim-RPC's (rol) + eigenaar (email_notifications) | Beide |
+| `push_tokens` | App (multi-device push-registratie) | Web leest (notificatie-dedupe in cron) |
 
 ### Belangrijk: `instructor_licenses` kolommen
 
