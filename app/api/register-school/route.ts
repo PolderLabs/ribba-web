@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { isValidEmail, isValidPhone, isValidKVK } from '@/utils/validation';
-import { isValidPostalCode } from '@/lib/validation';
+import { isValidEmail } from '@/utils/validation';
+import {
+  getCountryProfile,
+  isLegalForm,
+  isValidBusinessRegisterFor,
+  isValidPhoneFor,
+  isValidPostcodeFor,
+  isValidVatFor,
+  normalizeBusinessRegister,
+  normalizePostcode,
+  normalizeVat,
+  requiresLegalName,
+} from '@/lib/country-profile';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 import { sendAdminNotification } from '@/lib/admin-notifications';
 import {
@@ -72,6 +83,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const {
+      legal_form,
+      country_code,
       school_name,
       first_name,
       last_name,
@@ -80,16 +93,38 @@ export async function POST(request: NextRequest) {
       address,
       postal_code,
       city,
+      legal_name,
+      billing_address,
+      billing_postal_code,
+      billing_city,
       kvk_number,
       btw_number,
       password,
       legal_acceptances: clientLegalVersions,
     } = body;
 
-    // Server-side validation
+    // Server-side validation — de client valideert ook, maar HIER wordt
+    // afgedwongen. Regel (Önder, 19 jul 2026): ontbrekende kritieke
+    // factuurgegevens weigeren, nooit stil terugvallen op een default.
     if (!school_name || !first_name || !last_name || !email || !phone || !address || !postal_code || !city || !kvk_number || !password) {
       return NextResponse.json(
         { error: 'Alle verplichte velden moeten ingevuld zijn.' },
+        { status: 400 },
+      );
+    }
+
+    if (!isLegalForm(legal_form)) {
+      return NextResponse.json(
+        { error: 'Kies de bedrijfsvorm van je rijschool (eenmanszaak, VOF of BV).' },
+        { status: 400 },
+      );
+    }
+
+    // Alleen enabled landen; profiel stuurt alle land-specifieke validatie.
+    const profile = getCountryProfile(country_code);
+    if (!profile) {
+      return NextResponse.json(
+        { error: 'Dit land wordt nog niet ondersteund.' },
         { status: 400 },
       );
     }
@@ -104,14 +139,55 @@ export async function POST(request: NextRequest) {
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: 'Ongeldig e-mailadres.' }, { status: 400 });
     }
-    if (!isValidPhone(phone)) {
+    if (!isValidPhoneFor(profile, phone)) {
       return NextResponse.json({ error: 'Ongeldig telefoonnummer.' }, { status: 400 });
     }
-    if (!isValidPostalCode(postal_code)) {
-      return NextResponse.json({ error: 'Ongeldige postcode.' }, { status: 400 });
+    if (!isValidPostcodeFor(profile, postal_code)) {
+      return NextResponse.json({ error: profile.postcode.errorHint + '.' }, { status: 400 });
     }
-    if (!isValidKVK(kvk_number)) {
-      return NextResponse.json({ error: 'Ongeldig KVK-nummer (8 cijfers).' }, { status: 400 });
+    if (!isValidBusinessRegisterFor(profile, kvk_number)) {
+      return NextResponse.json({ error: profile.businessRegister.errorHint + '.' }, { status: 400 });
+    }
+    if (btw_number && typeof btw_number === 'string' && btw_number.trim() !== ''
+        && !isValidVatFor(profile, btw_number)) {
+      return NextResponse.json(
+        { error: `Ongeldig BTW-nummer (bijv. ${profile.vat.placeholder}).` },
+        { status: 400 },
+      );
+    }
+
+    // BV → statutaire naam verplicht (spiegelt de DB-constraint
+    // drivingschools_bv_requires_legal_name, zodat de gebruiker een nette
+    // fout krijgt in plaats van een database-error).
+    const legalNameTrimmed = typeof legal_name === 'string' ? legal_name.trim() : '';
+    if (requiresLegalName(legal_form) && !legalNameTrimmed) {
+      return NextResponse.json(
+        { error: 'Statutaire naam is verplicht voor een BV.' },
+        { status: 400 },
+      );
+    }
+
+    // Afwijkend vestigingsadres (alleen BV): alles-of-niets. Een half adres
+    // is een datafout — weigeren, niet stilzwijgend mengen met het
+    // rijschooladres.
+    const billingRaw = [billing_address, billing_postal_code, billing_city]
+      .map((v) => (typeof v === 'string' ? v.trim() : ''));
+    const billingFilled = billingRaw.filter((v) => v !== '').length;
+    const useBilling = billingFilled === 3;
+    if (billingFilled > 0 && !useBilling) {
+      return NextResponse.json(
+        { error: 'Vul het volledige vestigingsadres in (adres, postcode én plaats), of laat alle drie leeg.' },
+        { status: 400 },
+      );
+    }
+    if (useBilling && legal_form !== 'bv') {
+      return NextResponse.json(
+        { error: 'Een afwijkend vestigingsadres is alleen mogelijk bij een BV.' },
+        { status: 400 },
+      );
+    }
+    if (useBilling && !isValidPostcodeFor(profile, billingRaw[1])) {
+      return NextResponse.json({ error: profile.postcode.errorHint + '.' }, { status: 400 });
     }
 
     // Valideer dat alle 3 legal acceptances zijn meegestuurd met de juiste versie
@@ -192,13 +268,21 @@ export async function POST(request: NextRequest) {
       .from('drivingschools')
       .insert({
         name: school_name.trim(),
+        // country_code expliciet meesturen — de kolomdefault 'NL' is een
+        // overgangsmaatregel en gaat eraf zodra dit pad live is.
+        country_code: profile.code,
+        legal_form,
+        legal_name: requiresLegalName(legal_form) ? legalNameTrimmed : null,
         address: address.trim(),
-        postal_code: postal_code.trim().toUpperCase(),
+        postal_code: normalizePostcode(postal_code),
         city: city.trim(),
+        billing_address: useBilling ? billingRaw[0] : null,
+        billing_postal_code: useBilling ? normalizePostcode(billingRaw[1]) : null,
+        billing_city: useBilling ? billingRaw[2] : null,
         phone: phone.trim(),
         email: emailLower,
-        kvk_number: kvk_number.replace(/\s/g, '').trim(),
-        btw_number: btw_number ? btw_number.replace(/\s/g, '').toUpperCase().trim() : null,
+        kvk_number: normalizeBusinessRegister(kvk_number),
+        btw_number: btw_number && btw_number.trim() !== '' ? normalizeVat(btw_number) : null,
         iban: null,
         registration_slug: slug,
         registration_enabled: true,
