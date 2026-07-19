@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient, getCbrRijscholen } from '@/lib/marketplace-db';
-import { sendReplyNotificationMail, anonymizedFirstName } from '@/lib/marketplace-emails';
+import { sendReplyNotificationMail, sendRijschoolOutreachMail, anonymizedFirstName } from '@/lib/marketplace-emails';
 import type { ChatRole, MessageRow } from '@/lib/marketplace-types';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +22,7 @@ export const maxDuration = 60;
 
 const SETTLE_DELAY_MS = 2 * 60 * 1000;      // bericht moet ≥2 min oud zijn
 const MIN_MAIL_GAP_MS = 15 * 60 * 1000;     // max 1 mail per kant per 15 min
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // rolling chat-token levensduur
 
 interface ConversationJoin {
   id: string;
@@ -55,10 +56,32 @@ export async function GET(request: NextRequest) {
   const supabase = getServiceClient();
   const now = Date.now();
   const settleCutoff = new Date(now - SETTLE_DELAY_MS).toISOString();
+  const windowStart = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Kandidaten: conversaties met recente activiteit (ruime window; de echte
-  // filtering per kant gebeurt hieronder in JS — PostgREST kan geen twee
-  // kolommen met elkaar vergelijken).
+  // Retry-sweep: recipients die na een mislukte initiële outreach op 'pending'
+  // bleven, opnieuw mailen (max 24u oud). Zonder dit hoort de rijschool nooit
+  // van de aanvraag — er is geen conversation, dus de notificatie-loop hieronder
+  // ziet ze niet.
+  const retry = await retryPendingOutreach(supabase, now);
+
+  // Kandidaten via RPC: alleen conversaties waar minstens één kant achterloopt
+  // op zijn laatste notificatie (kolom-vergelijking die PostgREST niet kan),
+  // zodat de cap niet vol loopt met al-genotificeerde conversaties.
+  const { data: idRows, error: idError } = await supabase.rpc('list_notifiable_conversation_ids', {
+    p_window_start: windowStart,
+    p_settle_cutoff: settleCutoff,
+    p_limit: 200,
+  });
+  if (idError) {
+    console.error('chat-notifications: notifiable-ids rpc failed', idError);
+    return NextResponse.json({ error: 'query failed', retry }, { status: 500 });
+  }
+  const notifiableIds = (idRows ?? []).map((r: { conversation_id: string }) => r.conversation_id);
+
+  if (notifiableIds.length === 0) {
+    return NextResponse.json({ sent: 0, skipped: 0, failed: 0, candidates: 0, retry });
+  }
+
   const { data: candidates, error } = await supabase
     .from('conversations')
     .select(`
@@ -70,17 +93,11 @@ export async function GET(request: NextRequest) {
         inquiries ( leerling_email, leerling_name )
       )
     `)
-    .not('last_message_at', 'is', null)
-    .lte('last_message_at', settleCutoff)
-    .gte('last_message_at', new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString())
-    // Bewuste cap: oudste activiteit eerst, rest pakt de volgende run (5 min)
-    // op — voorkomt een onbegrensde respons én een maxDuration-overschrijding.
-    .order('last_message_at', { ascending: true })
-    .limit(200);
+    .in('id', notifiableIds);
 
   if (error) {
     console.error('chat-notifications: conversations query failed', error);
-    return NextResponse.json({ error: 'query failed' }, { status: 500 });
+    return NextResponse.json({ error: 'query failed', retry }, { status: 500 });
   }
 
   const conversations = (candidates ?? []) as unknown as ConversationJoin[];
@@ -205,6 +222,21 @@ export async function GET(request: NextRequest) {
           ? (schoolById.get(conv.rijschool_id)?.name ?? 'de rijschool')
           : anonymizedFirstName(recipientRow.inquiries.leerling_name);
 
+        // Stamp de throttle VÓÓR de send: als de stamp faalt sturen we niet
+        // (anders zou een gelukte send + gefaalde stamp elke 5 min dezelfde
+        // mail opnieuw versturen — een duplicate-storm). Bij een gefaalde send
+        // draaien we de stamp terug zodat de volgende run het opnieuw probeert.
+        const stampCol = side === 'leerling' ? 'leerling_last_notified_at' : 'rijschool_last_notified_at';
+        const { error: stampErr } = await supabase
+          .from('conversations')
+          .update({ [stampCol]: new Date().toISOString() })
+          .eq('id', conv.id);
+        if (stampErr) {
+          console.error('chat-notifications: throttle-stamp failed, send overgeslagen', conv.id, side, stampErr);
+          failed++;
+          continue;
+        }
+
         const ok = await sendReplyNotificationMail({
           to,
           senderName,
@@ -217,21 +249,18 @@ export async function GET(request: NextRequest) {
         });
 
         if (ok) {
-          await supabase
-            .from('conversations')
-            .update(
-              side === 'leerling'
-                ? { leerling_last_notified_at: new Date().toISOString() }
-                : { rijschool_last_notified_at: new Date().toISOString() },
-            )
-            .eq('id', conv.id);
           // Rolling token-expiry: de zojuist gemailde link moet 30 dagen werken.
           await supabase
             .from('inquiry_recipients')
-            .update({ chat_tokens_expire_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() })
+            .update({ chat_tokens_expire_at: new Date(now + TOKEN_TTL_MS).toISOString() })
             .eq('id', recipientRow.id);
           sent++;
         } else {
+          // Send mislukt → stamp terugdraaien zodat de volgende run retryt.
+          await supabase
+            .from('conversations')
+            .update({ [stampCol]: lastNotified })
+            .eq('id', conv.id);
           failed++;
         }
       } catch (err) {
@@ -241,5 +270,88 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ sent, skipped, failed, candidates: conversations.length });
+  return NextResponse.json({ sent, skipped, failed, candidates: conversations.length, retry });
+}
+
+// Retry-sweep voor recipients die na een mislukte initiële outreach op 'pending'
+// bleven (issue: outreach in inquiry-submit is fire-and-forget zonder retry).
+// Bounded op de laatste 24u; no-email-scholen worden overgeslagen (die kunnen
+// sowieso nooit reageren).
+interface PendingRecipient {
+  id: string;
+  rijschool_id: number;
+  rijschool_chat_token: string;
+  inquiry_id: string;
+  inquiries: {
+    leerling_name: string;
+    rijbewijs_categorie: string;
+    schakeling: string | null;
+    gewenste_startdatum: string | null;
+    bericht: string | null;
+  } | null;
+}
+
+async function retryPendingOutreach(
+  supabase: ReturnType<typeof getServiceClient>,
+  now: number,
+): Promise<{ sent: number; failed: number }> {
+  const dayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('inquiry_recipients')
+    .select(`
+      id, rijschool_id, rijschool_chat_token, inquiry_id,
+      inquiries ( leerling_name, rijbewijs_categorie, schakeling, gewenste_startdatum, bericht )
+    `)
+    .eq('status', 'pending')
+    .is('notification_email_sent_at', null)
+    .gte('created_at', dayAgo)
+    .limit(100);
+
+  if (error || !data || data.length === 0) {
+    if (error) console.error('chat-notifications: retry sweep query failed', error);
+    return { sent: 0, failed: 0 };
+  }
+
+  const rows = data as unknown as PendingRecipient[];
+  const schoolIds = [...new Set(rows.map((r) => r.rijschool_id))];
+  const schools = await getCbrRijscholen(schoolIds);
+  const schoolById = new Map(schools.map((s) => [s.id, s]));
+
+  let sent = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const school = schoolById.get(row.rijschool_id);
+    // Geen e-mail → nooit contacteerbaar; niet blijven proberen (24u-bound stopt het).
+    if (!school?.email || !row.inquiries) continue;
+    try {
+      const ok = await sendRijschoolOutreachMail({
+        to: school.email,
+        rijschoolName: school.name,
+        leerlingFullName: row.inquiries.leerling_name,
+        rijbewijsCategorie: row.inquiries.rijbewijs_categorie,
+        schakeling: row.inquiries.schakeling,
+        gewensteStartdatum: row.inquiries.gewenste_startdatum,
+        bericht: row.inquiries.bericht,
+        chatToken: row.rijschool_chat_token,
+        recipientId: row.id,
+      });
+      if (ok) {
+        await supabase
+          .from('inquiry_recipients')
+          .update({
+            status: 'app_notified',
+            notification_email_sent_at: new Date().toISOString(),
+            notified_email: school.email,
+          })
+          .eq('id', row.id);
+        sent++;
+      } else {
+        failed++;
+      }
+    } catch (err) {
+      console.error('chat-notifications: retry outreach failed', row.id, err);
+      failed++;
+    }
+  }
+  return { sent, failed };
 }

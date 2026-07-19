@@ -118,34 +118,11 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // Dedupe: rijscholen die dit e-mailadres < 24u geleden al aanschreef
-    // overslaan (rate limiting per IP dekt geen roterende IP's).
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: recentRows, error: dedupeError } = await supabase
-      .from('inquiry_recipients')
-      .select('rijschool_id, inquiries!inner(leerling_email)')
-      .in('rijschool_id', rijschoolIds)
-      .gte('created_at', dayAgo)
-      .eq('inquiries.leerling_email', leerlingEmail);
-    if (dedupeError) {
-      console.error('inquiry-submit: dedupe query failed', dedupeError);
-      return NextResponse.json(
-        { error: 'Er ging iets mis. Probeer het opnieuw.' },
-        { status: 500, headers },
-      );
-    }
-    const recentIds = new Set((recentRows ?? []).map((r) => r.rijschool_id as number));
-    const freshIds = rijschoolIds.filter((id) => !recentIds.has(id));
-    if (freshIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Je hebt deze rijscholen de afgelopen 24 uur al een aanvraag gestuurd.' },
-        { status: 409, headers },
-      );
-    }
-
-    const { data: inquiry, error: inquiryError } = await supabase
-      .from('inquiries')
-      .insert({
+    // Intake + 24u-dedupe transactioneel via RPC: een advisory lock op het
+    // e-mailadres voorkomt de TOCTOU-race waarbij twee gelijktijdige submits
+    // (dubbelklik/tabs) beide de dedupe passeren en dubbele outreach sturen.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('submit_inquiry', {
+      p_leerling: {
         leerling_name: leerlingName,
         leerling_email: leerlingEmail,
         leerling_phone: leerlingPhone,
@@ -156,53 +133,51 @@ export async function POST(request: NextRequest) {
         bericht,
         source_page: sourcePage,
         marketing_optin: marketingOptin,
-      })
-      .select('id')
-      .single();
+      },
+      p_rijschool_ids: rijschoolIds,
+    });
 
-    if (inquiryError || !inquiry) {
-      console.error('inquiry-submit: inquiry insert failed', inquiryError);
+    if (rpcError || !rpcResult) {
+      console.error('inquiry-submit: submit_inquiry rpc failed', rpcError);
       return NextResponse.json(
         { error: 'Er ging iets mis bij het opslaan. Probeer het opnieuw.' },
         { status: 500, headers },
       );
     }
 
-    const { data: recipients, error: recipientsError } = await supabase
-      .from('inquiry_recipients')
-      .insert(freshIds.map((rijschoolId) => ({
-        inquiry_id: inquiry.id,
-        rijschool_id: rijschoolId,
-      })))
-      .select('id, rijschool_id, rijschool_chat_token');
+    const inquiryId: string | null = rpcResult.inquiry_id;
+    const recipients: Array<{ id: string; rijschool_id: number; rijschool_chat_token: string }> =
+      rpcResult.recipients ?? [];
 
-    if (recipientsError || !recipients || recipients.length === 0) {
-      console.error('inquiry-submit: recipients insert failed', recipientsError);
-      // Compenserende delete — PostgREST kent geen cross-statement transacties.
-      await supabase.from('inquiries').delete().eq('id', inquiry.id);
+    if (!inquiryId || recipients.length === 0) {
       return NextResponse.json(
-        { error: 'Er ging iets mis bij het opslaan. Probeer het opnieuw.' },
-        { status: 500, headers },
+        { error: 'Je hebt deze rijscholen de afgelopen 24 uur al een aanvraag gestuurd.' },
+        { status: 409, headers },
       );
     }
 
     // Outreach + leerling-bevestiging ná de response: de leerling hoeft niet
     // op 10+ Resend-calls te wachten. Eén mislukte mail laat de recipient op
-    // 'pending' staan (zichtbaar in de data; retry is een follow-up van de
-    // notificatie-cron).
+    // 'pending' staan; de notificatie-cron sweept die en probeert opnieuw.
     after(async () => {
       const schoolById = new Map(schools.map((s) => [s.id, s]));
 
       // Bevestigingsmail naar de leerling: verwachtingen zetten + het eerste
       // contactmoment (warmt de mailbox op vóór de reply-notificaties).
+      // Alleen scholen mét e-mailadres beloven: no-email-scholen worden nooit
+      // gecontacteerd en kunnen structureel niet reageren.
       try {
-        await sendLeerlingBevestigingMail({
-          to: leerlingEmail,
-          leerlingFullName: leerlingName,
-          schoolNames: recipients
-            .map((r) => schoolById.get(r.rijschool_id)?.name)
-            .filter((n): n is string => !!n),
-        });
+        const emailableNames = recipients
+          .map((r) => schoolById.get(r.rijschool_id))
+          .filter((s): s is NonNullable<typeof s> => !!s?.email)
+          .map((s) => s.name);
+        if (emailableNames.length > 0) {
+          await sendLeerlingBevestigingMail({
+            to: leerlingEmail,
+            leerlingFullName: leerlingName,
+            schoolNames: emailableNames,
+          });
+        }
       } catch (err) {
         console.error('inquiry-submit: leerling-bevestiging failed', err);
       }
@@ -242,7 +217,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { inquiry_id: inquiry.id, recipients_count: recipients.length },
+      { inquiry_id: inquiryId, recipients_count: recipients.length },
       { status: 201, headers },
     );
   } catch (error) {

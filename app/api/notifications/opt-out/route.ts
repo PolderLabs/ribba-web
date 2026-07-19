@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const lookup = await lookupRecipientByToken(token);
-    if (!lookup) {
+    if (!lookup || new Date(lookup.recipient.chat_tokens_expire_at) < new Date()) {
       return page('Link ongeldig', 'Deze afmeldlink is ongeldig of verlopen.');
     }
     return page(
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const lookup = await lookupRecipientByToken(token);
-    if (!lookup) {
+    if (!lookup || new Date(lookup.recipient.chat_tokens_expire_at) < new Date()) {
       return page('Link ongeldig', 'Deze afmeldlink is ongeldig of verlopen.');
     }
     const { recipient, role } = lookup;

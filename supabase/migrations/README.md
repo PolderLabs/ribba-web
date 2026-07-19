@@ -40,3 +40,24 @@ supabase db push
   aanstaan: Auth → Email Templates → "Magic Link" template moet `{{ .Token }}`
   bevatten (anders krijgen gebruikers alleen een link, geen 6-cijferige code).
   ⚠️ Dit template is gedeeld met de native apps — eerst afstemmen.
+- `20260718000000_marketplace_review_fixes.sql` bevat de fixes uit de
+  code-review op ribba-web#25: column-level SELECT op de chat-tokens (#1),
+  status-gate op de messages-INSERT-policy (#8), de transactionele
+  `submit_inquiry`-RPC (#6, tegen de dedupe-race) en
+  `list_notifiable_conversation_ids` (#7, tegen cron-starvation).
+
+## chat-notifications via pg_cron (NIET Vercel Cron)
+
+Het Vercel-plan staat geen 3e/sub-dagelijkse cron toe, dus de 5-minuten
+reply-notificatie-trigger draait op **Supabase pg_cron** i.p.v. `vercel.json`:
+
+- Extensies: `pg_cron` + `pg_net`.
+- Secret: `CRON_SECRET` staat in Supabase **Vault** onder
+  `cron_secret_chat_notifications` (niet in `cron.job.command`).
+- Job `chat-notifications-5min` (`*/5 * * * *`) doet via `net.http_get` een
+  call naar `https://link.ribba.app/api/cron/chat-notifications` met
+  `Authorization: Bearer <vault-secret>`.
+
+Herstellen/aanpassen: zie `cron.job` (`select * from cron.job where jobname =
+'chat-notifications-5min'`). Bij een gewijzigd `CRON_SECRET` ook de Vault-secret
+bijwerken (`vault.update_secret`).

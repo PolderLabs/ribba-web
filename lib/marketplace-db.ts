@@ -42,6 +42,7 @@ export interface RecipientTokenLookup {
     rijschool_user_id: string | null;
     status: InquiryRecipientStatus;
     notified_email: string | null;
+    chat_tokens_expire_at: string;
     leerling_email_optout_at: string | null;
     rijschool_email_optout_at: string | null;
   };
@@ -60,7 +61,7 @@ export async function lookupRecipientByToken(token: string): Promise<RecipientTo
   if (!isChatToken(token)) return null;
   const supabase = getServiceClient();
   const columns =
-    'id, inquiry_id, rijschool_id, rijschool_user_id, status, notified_email, leerling_email_optout_at, rijschool_email_optout_at';
+    'id, inquiry_id, rijschool_id, rijschool_user_id, status, notified_email, chat_tokens_expire_at, leerling_email_optout_at, rijschool_email_optout_at';
 
   const { data: asRijschool, error: rijschoolError } = await supabase
     .from('inquiry_recipients')
