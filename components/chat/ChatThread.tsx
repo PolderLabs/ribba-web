@@ -208,20 +208,24 @@ export default function ChatThread({
         </div>
 
         <div className="chat-thread">
-          <div className="chat-inquiry-card">
-            <p className="chat-inquiry-title">
-              Aanvraag van {inquiryPreview.voornaam} · rijbewijs {inquiryPreview.rijbewijs_categorie}
-              {inquiryPreview.schakeling ? ` · ${inquiryPreview.schakeling}` : ''}
-            </p>
-            {inquiryPreview.gewenste_startdatum && (
-              <p className="chat-inquiry-detail">Gewenste start: {formatDay(inquiryPreview.gewenste_startdatum)}</p>
-            )}
-            {inquiryPreview.opleidingsvoorkeur && (
-              <p className="chat-inquiry-detail">Soort opleiding: {inquiryPreview.opleidingsvoorkeur}</p>
-            )}
-            {inquiryPreview.bericht && (
-              <p className="chat-inquiry-message">“{inquiryPreview.bericht}”</p>
-            )}
+          {/* De aanvraag zelf als openingsbericht van de leerling — leest als
+              een gewoon chatbericht i.p.v. een los kaartje dat je overslaat. */}
+          <div className="chat-day-divider">{formatDay(inquiryPreview.created_at)}</div>
+          <div className="chat-bubble-row">
+            <div className="chat-bubble chat-bubble-opener">
+              <p className="chat-opener-title">Aanvraag via Ribba</p>
+              <p className="chat-opener-line"><strong>Rijbewijs:</strong> {inquiryPreview.rijbewijs_categorie}{inquiryPreview.schakeling ? ` · ${inquiryPreview.schakeling}` : ''}</p>
+              {inquiryPreview.gewenste_startdatum && (
+                <p className="chat-opener-line"><strong>Gewenste start:</strong> {formatDay(inquiryPreview.gewenste_startdatum)}</p>
+              )}
+              {inquiryPreview.opleidingsvoorkeur && (
+                <p className="chat-opener-line"><strong>Soort opleiding:</strong> {inquiryPreview.opleidingsvoorkeur}</p>
+              )}
+              {inquiryPreview.bericht && (
+                <p className="chat-opener-msg">{inquiryPreview.bericht}</p>
+              )}
+              <span className="chat-bubble-meta">{formatTime(inquiryPreview.created_at)}</span>
+            </div>
           </div>
 
           {loading && <div className="spinner" />}
@@ -232,7 +236,10 @@ export default function ChatThread({
           {messages.map((msg, i) => {
             const own = msg.sender_role === role;
             const day = formatDay(msg.created_at);
-            const showDay = i === 0 || day !== formatDay(messages[i - 1].created_at);
+            // Vergelijk het eerste bericht met de opener-datum, zodat we niet
+            // twee dag-scheiders op dezelfde dag krijgen.
+            const prevDay = i === 0 ? formatDay(inquiryPreview.created_at) : formatDay(messages[i - 1].created_at);
+            const showDay = day !== prevDay;
             return (
               <div key={msg.id}>
                 {showDay && <div className="chat-day-divider">{day}</div>}

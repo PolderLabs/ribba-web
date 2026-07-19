@@ -831,6 +831,43 @@ a.text-link:hover {
   font-style: italic;
 }
 
+/* Openingsbericht: de aanvraag als eerste chatbubble (leerling-kant) */
+.chat-bubble-opener {
+  background: #F0FDFA;
+  border: 1px solid #CCFBF1;
+  max-width: 88%;
+}
+
+.chat-opener-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #0F766E;
+  margin-bottom: 6px;
+}
+
+.chat-opener-line {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1C1917;
+}
+
+.chat-opener-line strong {
+  color: #0F766E;
+  font-weight: 600;
+}
+
+.chat-opener-msg {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #CCFBF1;
+  font-size: 15px;
+  color: #0F172A;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .chat-day-divider {
   text-align: center;
   font-size: 12px;
