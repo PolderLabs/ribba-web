@@ -52,6 +52,16 @@ export default function ChatThread({
     await supabase.rpc('mark_messages_read', { p_conversation_id: conversationId });
   }, [supabase, conversationId]);
 
+  // Alleen als gelezen markeren wanneer de tab echt zichtbaar is. Een
+  // achtergrond-tab telt niet als "actief kijken" — anders zou de
+  // reply-notificatie-mail (cron mailt alleen ongelezen berichten) nooit
+  // afgaan voor iemand die de chat op de achtergrond heeft openstaan.
+  const markReadIfVisible = useCallback(() => {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      void markRead();
+    }
+  }, [markRead]);
+
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
     let cancelled = false;
@@ -82,7 +92,7 @@ export default function ChatThread({
         return [...loaded, ...extra];
       });
       setLoading(false);
-      void markRead();
+      markReadIfVisible();
     };
 
     (async () => {
@@ -104,7 +114,9 @@ export default function ChatThread({
           (payload) => {
             const msg = payload.new as MessageRow;
             setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-            if (msg.sender_role === counterpartRole) void markRead();
+            // Alleen als de tab zichtbaar is; anders blijft het bericht
+            // ongelezen en pikt de cron het op voor de e-mailnotificatie.
+            if (msg.sender_role === counterpartRole) markReadIfVisible();
           },
         )
         .on(
@@ -129,12 +141,19 @@ export default function ChatThread({
       if (session) supabase.realtime.setAuth(session.access_token);
     });
 
+    // Terug naar de tab → inhalen wat tijdens onzichtbaarheid binnenkwam.
+    const onVisible = () => markReadIfVisible();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+
     return () => {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
       authSub.subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
-  }, [supabase, conversationId, counterpartRole, markRead]);
+  }, [supabase, conversationId, counterpartRole, markRead, markReadIfVisible]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
