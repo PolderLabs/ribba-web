@@ -109,6 +109,7 @@ export interface ChatContextData {
     rijbewijs_categorie: RijbewijsCategorie;
     schakeling: Schakeling | null;
     gewenste_startdatum: string | null;
+    opleidingsvoorkeur: string | null;
     bericht: string | null;
     created_at: string;
   };

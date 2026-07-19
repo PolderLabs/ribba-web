@@ -216,6 +216,9 @@ export default function ChatThread({
             {inquiryPreview.gewenste_startdatum && (
               <p className="chat-inquiry-detail">Gewenste start: {formatDay(inquiryPreview.gewenste_startdatum)}</p>
             )}
+            {inquiryPreview.opleidingsvoorkeur && (
+              <p className="chat-inquiry-detail">Soort opleiding: {inquiryPreview.opleidingsvoorkeur}</p>
+            )}
             {inquiryPreview.bericht && (
               <p className="chat-inquiry-message">“{inquiryPreview.bericht}”</p>
             )}
