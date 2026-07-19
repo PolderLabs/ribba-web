@@ -1,14 +1,14 @@
 // Reply-notificatie e-mails voor de web-chat (issue ribba.app#44).
-// Draait elke 5 minuten. Getriggerd door Supabase pg_cron (job
+// Draait elke minuut. Getriggerd door Supabase pg_cron (job
 // 'chat-notifications-5min'), NIET door Vercel Cron — het Vercel-plan staat
-// geen sub-dagelijkse crons toe (3e cron + */5 wordt geweigerd, deploy faalt).
-// pg_net doet elke 5 min een GET met `Authorization: Bearer <CRON_SECRET>`
+// geen sub-dagelijkse crons toe (3e cron + */1 wordt geweigerd, deploy faalt).
+// pg_net doet elke minuut een GET met `Authorization: Bearer <CRON_SECRET>`
 // (secret in Supabase Vault). Per conversatie-kant: is er een nieuw
-// counterpart-bericht sinds de laatste notificatie én is dat ≥2 min oud
+// counterpart-bericht sinds de laatste notificatie én is dat ≥45s oud
 // (settle-delay tegen mail-per-toetsaanslag) én is de laatste mail ≥15 min
-// geleden → één gebundelde mail. Ontvangers met actieve push (app) of met
-// opt-out krijgen géén mail; een nog niet geclaimde leerling juist altijd —
-// dat is de funnel-stap die de leerling de chat in brengt.
+// geleden → één gebundelde mail. Netto latency ~1 min. Ontvangers met actieve
+// push (app) of met opt-out krijgen géén mail; een nog niet geclaimde leerling
+// juist altijd — dat is de funnel-stap die de leerling de chat in brengt.
 //
 // Auth: dezelfde CRON_SECRET-bearer-check als de Vercel-crons.
 
@@ -20,7 +20,7 @@ import type { ChatRole, MessageRow } from '@/lib/marketplace-types';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const SETTLE_DELAY_MS = 2 * 60 * 1000;      // bericht moet ≥2 min oud zijn
+const SETTLE_DELAY_MS = 45 * 1000;          // bericht moet ≥45s oud zijn (anti mid-burst)
 const MIN_MAIL_GAP_MS = 15 * 60 * 1000;     // max 1 mail per kant per 15 min
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // rolling chat-token levensduur
 
