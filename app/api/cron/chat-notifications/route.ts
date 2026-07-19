@@ -1,12 +1,16 @@
 // Reply-notificatie e-mails voor de web-chat (issue ribba.app#44).
-// Draait elke 5 minuten (vercel.json). Per conversatie-kant: is er een nieuw
+// Draait elke 5 minuten. Getriggerd door Supabase pg_cron (job
+// 'chat-notifications-5min'), NIET door Vercel Cron — het Vercel-plan staat
+// geen sub-dagelijkse crons toe (3e cron + */5 wordt geweigerd, deploy faalt).
+// pg_net doet elke 5 min een GET met `Authorization: Bearer <CRON_SECRET>`
+// (secret in Supabase Vault). Per conversatie-kant: is er een nieuw
 // counterpart-bericht sinds de laatste notificatie én is dat ≥2 min oud
 // (settle-delay tegen mail-per-toetsaanslag) én is de laatste mail ≥15 min
 // geleden → één gebundelde mail. Ontvangers met actieve push (app) of met
 // opt-out krijgen géén mail; een nog niet geclaimde leerling juist altijd —
 // dat is de funnel-stap die de leerling de chat in brengt.
 //
-// Auth: Vercel Cron stuurt automatisch `Authorization: Bearer ${CRON_SECRET}`.
+// Auth: dezelfde CRON_SECRET-bearer-check als de Vercel-crons.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient, getCbrRijscholen } from '@/lib/marketplace-db';
