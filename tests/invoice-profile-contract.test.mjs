@@ -2,11 +2,14 @@
 // ribbaPro docs/design/2026-07-19_customer-sync-contract.md).
 //
 // Leidend exemplaar: ribbaPro supabase/functions/_shared/invoice-profile.ts.
-// Dit exemplaar (lib/invoice-profile.ts) volgt. De checksum hieronder pint
-// tests/invoice-profile.fixtures.json byte-voor-byte vast op dezelfde waarde
-// als in de ribbaPro-testsuite. Fixtures wijzigen = beide kopieën én beide
-// checksums bijwerken in dezelfde werkstroom — drift laat één van de twee
-// suites hard falen.
+// Dit exemplaar (lib/invoice-profile.ts) volgt.
+//
+// De checksum hieronder is een LOKALE integriteitscontrole: hij dwingt af dat
+// een fixturewijziging in deze repo bewust gebeurt (checksum expliciet
+// bijwerken = reviewmoment). Hij bewijst NIET dat ribbaPro dezelfde fixtures
+// draagt — geen van beide CI's kent de inhoud van de andere repo.
+// Cross-repo-gelijkheid is procedureel: wijzig eerst in ribbaPro, neem
+// fixtures + checksum in dezelfde werkstroom hierheen over (besluit B2).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +26,7 @@ const fixtures = JSON.parse(raw.toString('utf8'));
 const { invoiceNameFor, invoiceAddressFor, InvoiceProfileError } =
   await import('../lib/invoice-profile.ts');
 
-test('gedeelde fixtures: checksum identiek aan ribbaPro (driftbewaking)', () => {
+test('gedeelde fixtures: lokale checksum klopt (bewuste wijziging vereist expliciete checksum-update; cross-repo-sync is procedureel)', () => {
   assert.equal(createHash('sha256').update(raw).digest('hex'), FIXTURE_SHA256);
   assert.equal(fixtures.version, 1);
   assert.equal(fixtures.invoiceNameFor.length, 10);
