@@ -301,13 +301,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Insert instructor
+    // 4. Insert instructor — de registratie-oprichter is de beheerder van de
+    // nieuwe school en wijkt daarom bewust af van de veilige DB-default
+    // school_role='employee' (die default beschermt alle overige aanmaakpaden,
+    // zoals invites).
     const { data: instructor, error: instructorError } = await supabase
       .from('instructors')
       .insert({
         user_id: authUserId,
         drivingschool_id: school.id,
         status: 'active',
+        school_role: 'admin',
       })
       .select('id')
       .single();
