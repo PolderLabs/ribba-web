@@ -52,6 +52,82 @@ test('definitieve HTTP-fout sluit de poging af: nieuwe klik = NIEUWE attempt_id'
   assert.equal(n, 2);
 });
 
+// ── Checkout: request-level bewijs + bfcache-herstel (correctie 21 jul) ─────
+// Zelfde compositie als app/upgrade/page.tsx: begin() vóór de fetch, fail()
+// alleen bij een mislukt antwoord, bij succes GEEN release (de pagina
+// navigeert naar Stripe; de lock blijft tot de redirect). reset() is de
+// pageshow/persisted-terugkeer uit de bfcache.
+
+function pageLikeCheckout(controller, fetchImpl) {
+  return async (plan) => {
+    const attemptId = controller.begin(plan);
+    if (attemptId === null) return 'geblokkeerd';
+    const result = await startStripeCheckout({
+      supabaseUrl: 'https://p.supabase.co', accessToken: 't', schoolId: 's',
+      plan, attemptId, fetchImpl,
+    });
+    if (!result.ok) controller.fail(plan, result.kind);
+    return result;
+  };
+}
+
+test('checkout 1/5: twee gelijktijdige klikken leveren exact één request op', async () => {
+  const controller = createCheckoutController();
+  let requests = 0;
+  const traag = () => new Promise((r) => setTimeout(() => {
+    requests++;
+    r({ ok: true, status: 200, json: async () => ({ checkoutUrl: 'https://checkout.stripe.com/c/1' }) });
+  }, 10));
+  const call = pageLikeCheckout(controller, traag);
+  const [eerste, tweede] = await Promise.all([call('basic'), call('basic')]);
+  assert.equal(requests, 1);
+  assert.equal(eerste.ok, true);
+  assert.equal(tweede, 'geblokkeerd'); // stopte vóór de fetch
+});
+
+test('checkout 2/5: succesantwoord vóór redirect → lock blijft actief', async () => {
+  const controller = createCheckoutController();
+  const { impl } = fakeFetch(200, { checkoutUrl: 'https://checkout.stripe.com/c/2' });
+  const result = await pageLikeCheckout(controller, impl)('basic');
+  assert.equal(result.ok, true);
+  assert.equal(controller.inFlight(), 'basic'); // geen release bij succes
+  assert.equal(controller.begin('basic'), null); // klik tijdens redirect blijft dood
+});
+
+test('checkout 3/5: bfcache-terugkeer na succes → lock hersteld, bewuste nieuwe klik kan', async () => {
+  let n = 0;
+  const controller = createCheckoutController(() => `uuid-${++n}`);
+  const { impl } = fakeFetch(200, { checkoutUrl: 'https://checkout.stripe.com/c/3' });
+  await pageLikeCheckout(controller, impl)('basic');
+  assert.equal(controller.inFlight(), 'basic');
+  controller.reset(); // pageshow met event.persisted === true
+  assert.equal(controller.inFlight(), null);
+  const nieuweKlik = controller.begin('basic');
+  assert.equal(nieuweKlik, 'uuid-1'); // semantiek onaangetast: succes sloot de
+  assert.equal(n, 1);                 // poging niet af → zelfde idempotente id
+});
+
+test('checkout 4/5: definitieve fout → lock vrij, volgende klik krijgt NIEUWE attempt_id', async () => {
+  let n = 0;
+  const controller = createCheckoutController(() => `uuid-${++n}`);
+  const { impl } = fakeFetch(422, { error: 'Vul eerst je factuurprofiel aan.' });
+  const result = await pageLikeCheckout(controller, impl)('basic');
+  assert.equal(result.ok, false);
+  assert.equal(controller.inFlight(), null); // lock vrij
+  assert.equal(controller.begin('basic'), 'uuid-2'); // nieuwe poging, nieuwe id
+});
+
+test('checkout 5/5: netwerkfout → lock vrij, volgende klik hergebruikt DEZELFDE attempt_id', async () => {
+  let n = 0;
+  const controller = createCheckoutController(() => `uuid-${++n}`);
+  const call = pageLikeCheckout(controller, async () => { throw new TypeError('fetch failed'); });
+  const result = await call('basic');
+  assert.equal(result.ok, false);
+  assert.equal(controller.inFlight(), null); // lock vrij
+  assert.equal(controller.begin('basic'), 'uuid-1'); // zelfde poging hervat
+  assert.equal(n, 1);
+});
+
 test('een ander plan is een andere poging met een eigen attempt_id', () => {
   let n = 0;
   const c = createCheckoutController(() => `uuid-${++n}`);

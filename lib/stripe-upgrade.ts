@@ -31,6 +31,17 @@ export type CheckoutController = {
    * de volgende klik krijgt een nieuwe attempt_id.
    */
   fail(plan: UpgradePlan, kind: CheckoutFailureKind): void;
+  /**
+   * Herstel na terugkeer uit de bfcache (pageshow met persisted=true,
+   * correctieronde 21 jul): bij succes blijft de lock bewust staan tot de
+   * redirect, maar wie via browser-back terugkeert krijgt de pagina uit de
+   * cache mét die actieve lock — reset() geeft alleen de lock vrij zodat
+   * een bewuste nieuwe klik weer kan. De attempt_id-semantiek blijft
+   * onaangetast: een bfcache-terugkeer is géén serverantwoord, dus er
+   * wordt niets afgesloten of vernieuwd (zelfde plan hervat dezelfde
+   * idempotente poging).
+   */
+  reset(): void;
   /** Alleen voor tests/weergave: loopt er nu een aanroep? */
   inFlight(): UpgradePlan | null;
 };
@@ -51,6 +62,9 @@ export function createCheckoutController(
     fail(plan, kind) {
       if (inFlight === plan) inFlight = null;
       if (kind === 'definitive') attemptIds.delete(plan);
+    },
+    reset() {
+      inFlight = null;
     },
     inFlight() {
       return inFlight;

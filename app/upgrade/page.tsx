@@ -164,6 +164,24 @@ function UpgradeContent() {
   // (naast de disabled-knop). De billinglogica leeft in de edge function.
   const checkoutControllerRef = useRef(createCheckoutController());
 
+  // bfcache-herstel (correctieronde 21 jul): na een geslaagde checkout blijft
+  // de lock bewust staan tot de redirect naar Stripe. Keert de gebruiker via
+  // browser-back terug, dan herstelt Safari/Firefox/Chrome de pagina uit de
+  // back/forward-cache mét die actieve lock — zonder reset zouden de
+  // checkoutknoppen permanent dood zijn. pageshow met event.persisted=true is
+  // dé bfcache-detectie; bij een normale (verse) load is persisted false en
+  // gebeurt er niets. attempt_id-semantiek blijft onaangetast.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        checkoutControllerRef.current.reset();
+        setLoading(null);
+      }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   const handleCheckout = async (plan: UpgradePlan) => {
     if (!schoolId) {
       setError('Geen rijschool gekoppeld. Open deze pagina vanuit de Ribba app.');
