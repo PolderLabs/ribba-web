@@ -133,6 +133,39 @@ export async function startStripeCheckout(opts: {
 export const GENERIC_PORTAL_ERROR =
   'De beheerpagina kon niet worden geopend. Probeer het opnieuw of mail hallo@ribba.app.';
 
+export type PortalGate = {
+  /**
+   * Synchrone in-flight lock (correctieronde 21 jul): true = lock verkregen,
+   * start precies één aanroep; false = er loopt al een aanroep — stop vóór
+   * getSession/fetch. UI-state (disabled-knop) is hier bewust geen onderdeel
+   * van: twee click-events kunnen dezelfde render-state zien, deze gate niet.
+   */
+  begin(): boolean;
+  /** Geeft de lock vrij — altijd in finally, ongeacht de uitkomst. */
+  end(): void;
+  /** Alleen voor tests/weergave. */
+  inFlight(): boolean;
+};
+
+// Geen attempt_id hier (bewust): een portal-sessie is efemeer en kent geen
+// idempotente resource — de gate bewaakt uitsluitend het aantal requests.
+export function createPortalGate(): PortalGate {
+  let busy = false;
+  return {
+    begin() {
+      if (busy) return false;
+      busy = true;
+      return true;
+    },
+    end() {
+      busy = false;
+    },
+    inFlight() {
+      return busy;
+    },
+  };
+}
+
 export function portalFunctionUrl(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/stripe-portal-session`;
 }

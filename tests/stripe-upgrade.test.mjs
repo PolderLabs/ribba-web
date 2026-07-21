@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 
 const {
   createCheckoutController,
+  createPortalGate,
   startStripeCheckout,
   checkoutFunctionUrl,
   openStripePortal,
@@ -185,4 +186,65 @@ test('portalFunctionUrl verdraagt een trailing slash', () => {
     portalFunctionUrl('https://project.supabase.co/'),
     'https://project.supabase.co/functions/v1/stripe-portal-session',
   );
+});
+
+// ── Portal-dubbelklik: synchrone request-level gate (correctie 21 jul) ──────
+// Zelfde compositie als app/mijn-ribba/page.tsx: lock vóór fetch, vrijgave
+// in finally. Bewust GEEN attempt_id — de gate bewaakt alleen het aantal
+// requests, een portal-sessie kent geen idempotente resource.
+
+function gateGuardedPortalCall(gate, fetchImpl) {
+  if (!gate.begin()) return Promise.resolve('geblokkeerd');
+  return openStripePortal({
+    supabaseUrl: 'https://p.supabase.co', accessToken: 't', schoolId: 's', fetchImpl,
+  }).finally(() => gate.end());
+}
+
+test('twee onmiddellijke portal-aanroepen leveren exact één request op', async () => {
+  const gate = createPortalGate();
+  let requests = 0;
+  const traag = () => new Promise((r) => setTimeout(() => {
+    requests++;
+    r({ ok: true, status: 200, json: async () => ({ url: 'https://billing.stripe.com/p/s/1' }) });
+  }, 10));
+  const [eerste, tweede] = await Promise.all([
+    gateGuardedPortalCall(gate, traag),
+    gateGuardedPortalCall(gate, traag),
+  ]);
+  assert.equal(requests, 1);
+  assert.deepEqual(eerste, { ok: true, url: 'https://billing.stripe.com/p/s/1' });
+  assert.equal(tweede, 'geblokkeerd'); // stopte vóór de fetch
+});
+
+test('gate komt vrij na een definitieve fout (403/409)', async () => {
+  const gate = createPortalGate();
+  const { impl } = fakeFetch(403, { error: 'Geen toegang.', reason: 'forbidden' });
+  const result = await gateGuardedPortalCall(gate, impl);
+  assert.equal(result.ok, false);
+  assert.equal(gate.inFlight(), false);
+  assert.equal(gate.begin(), true); // volgende bewuste poging kan
+  gate.end();
+});
+
+test('gate komt vrij na een netwerkfout', async () => {
+  const gate = createPortalGate();
+  const result = await gateGuardedPortalCall(gate, async () => { throw new TypeError('fetch failed'); });
+  assert.equal(result.ok, false);
+  assert.equal(gate.inFlight(), false);
+  assert.equal(gate.begin(), true);
+  gate.end();
+});
+
+test('na terugkeer van de eerste aanroep kan bewust een nieuwe portalsessie starten', async () => {
+  const gate = createPortalGate();
+  let requests = 0;
+  const impl = async () => {
+    requests++;
+    return { ok: true, status: 200, json: async () => ({ url: `https://billing.stripe.com/p/s/${requests}` }) };
+  };
+  const eerste = await gateGuardedPortalCall(gate, impl);
+  const tweede = await gateGuardedPortalCall(gate, impl);
+  assert.deepEqual(eerste, { ok: true, url: 'https://billing.stripe.com/p/s/1' });
+  assert.deepEqual(tweede, { ok: true, url: 'https://billing.stripe.com/p/s/2' });
+  assert.equal(requests, 2); // twee BEWUSTE, opeenvolgende sessies — geen blokkade
 });

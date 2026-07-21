@@ -7,11 +7,11 @@
 // projectbrede Supabase-set; hier alleen de user-JWT). Stripe blijft één
 // onderdeel achter deze pagina; support en licenties blijven bij Ribba.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
-import { openStripePortal } from '@/lib/stripe-upgrade';
+import { createPortalGate, openStripePortal } from '@/lib/stripe-upgrade';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -28,6 +28,10 @@ export default function MijnRibbaPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Synchrone request-level dubbelklikblokkade (correctieronde 21 jul):
+  // portalBusy/disabled is UI-bescherming, maar twee click-events kunnen
+  // dezelfde render-state zien; deze ref-gate niet.
+  const portalGateRef = useRef(createPortalGate());
 
   useEffect(() => {
     const supabase = getSupabaseBrowser();
@@ -55,30 +59,38 @@ export default function MijnRibbaPage() {
   }, [router]);
 
   const openPortal = async () => {
-    if (!schoolId || portalBusy) return;
+    if (!schoolId) return;
+    // Lock vóór getSession/fetch; een tweede aanroep stopt hier synchroon.
+    if (!portalGateRef.current.begin()) return;
     setPortalBusy(true);
     setError(null);
 
-    // Refresh-veilige token-fetch (zelfde patroon als /upgrade).
-    const supabase = getSupabaseBrowser();
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
+    try {
+      // Refresh-veilige token-fetch (zelfde patroon als /upgrade).
+      const supabase = getSupabaseBrowser();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
 
-    const result = await openStripePortal({
-      supabaseUrl,
-      accessToken: token,
-      schoolId,
-    });
-    if (!result.ok) {
-      setError(result.error);
-      setPortalBusy(false);
-      return;
+      const result = await openStripePortal({
+        supabaseUrl,
+        accessToken: token,
+        schoolId,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        setPortalBusy(false);
+        return;
+      }
+      // Succes: portalBusy blijft staan tot de navigatie de pagina verlaat;
+      // de gate komt in finally vrij, dus een bewuste nieuwe sessie kan.
+      window.location.href = result.url;
+    } finally {
+      portalGateRef.current.end();
     }
-    window.location.href = result.url;
   };
 
   return (
