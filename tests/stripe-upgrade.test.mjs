@@ -1,8 +1,10 @@
-// Stripe-upgrade-wiring (/upgrade → stripe-create-checkout): bewijst de
-// GO-eisen van 21 jul 2026 — juiste aanroep per plan, dubbelklik-blokkade,
-// attempt_id-hergebruik bij bewuste retry, Nederlandse foutafhandeling en
-// de dynamische Basic/Premium-succestekst. Geen billinglogica hier: de
-// checkout zelf is in de sandbox-ketentest al end-to-end bewezen.
+// Stripe-upgrade-wiring (/upgrade → stripe-create-checkout, Mijn Ribba →
+// stripe-portal-session): bewijst de GO-eisen van 21 jul 2026 — juiste
+// aanroep per plan, dubbelklik-blokkade, attempt-semantiek (netwerkfout
+// hervat dezelfde poging; definitieve HTTP-fout sluit af → nieuwe
+// attempt_id), Nederlandse foutafhandeling en de portal-client zonder
+// Stripe-secret in Vercel. Geen billinglogica hier: de keten zelf is in de
+// sandbox-ketentest al end-to-end bewezen.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,9 +13,11 @@ const {
   createCheckoutController,
   startStripeCheckout,
   checkoutFunctionUrl,
-  successPlanLabel,
+  openStripePortal,
+  portalFunctionUrl,
   GENERIC_CHECKOUT_ERROR,
   NETWORK_CHECKOUT_ERROR,
+  GENERIC_PORTAL_ERROR,
 } = await import('../lib/stripe-upgrade.ts');
 
 // ── Controller: dubbelklik + attempt_id-semantiek ───────────────────────────
@@ -27,21 +31,31 @@ test('dubbelklik: tweede begin() tijdens een lopende poging geeft null', () => {
   assert.equal(c.inFlight(), 'basic');
 });
 
-test('bewuste retry na fout hergebruikt DEZELFDE attempt_id', () => {
+test('netwerkfout (ambigue uitkomst): retry hervat DEZELFDE attempt_id', () => {
   let n = 0;
   const c = createCheckoutController(() => `uuid-${++n}`);
   const eerste = c.begin('basic');
-  c.fail('basic');
+  c.fail('basic', 'network');
   const retry = c.begin('basic');
   assert.equal(retry, eerste); // zelfde poging → zelfde idempotency-basis
   assert.equal(n, 1); // geen tweede uuid gegenereerd
+});
+
+test('definitieve HTTP-fout sluit de poging af: nieuwe klik = NIEUWE attempt_id', () => {
+  let n = 0;
+  const c = createCheckoutController(() => `uuid-${++n}`);
+  const eerste = c.begin('basic');
+  c.fail('basic', 'definitive');
+  const nieuwe = c.begin('basic');
+  assert.notEqual(nieuwe, eerste); // nooit vastzitten op een gecachte Stripe-fout
+  assert.equal(n, 2);
 });
 
 test('een ander plan is een andere poging met een eigen attempt_id', () => {
   let n = 0;
   const c = createCheckoutController(() => `uuid-${++n}`);
   const basic = c.begin('basic');
-  c.fail('basic');
+  c.fail('basic', 'network');
   const premium = c.begin('premium');
   assert.notEqual(premium, basic);
   assert.equal(n, 2);
@@ -101,6 +115,7 @@ test('serverfout (bv. 422 profiel) toont de Nederlandse servertekst', async () =
     plan: 'basic', attemptId: 'a', fetchImpl: impl,
   });
   assert.equal(result.ok, false);
+  assert.equal(result.kind, 'definitive');
   assert.match(result.error, /Bedrijfsvorm ontbreekt/);
 });
 
@@ -110,7 +125,7 @@ test('fout zonder bruikbare tekst valt terug op de generieke Nederlandse melding
     supabaseUrl: 'https://p.supabase.co', accessToken: 't', schoolId: 's',
     plan: 'basic', attemptId: 'a', fetchImpl: impl,
   });
-  assert.deepEqual(result, { ok: false, error: GENERIC_CHECKOUT_ERROR });
+  assert.deepEqual(result, { ok: false, error: GENERIC_CHECKOUT_ERROR, kind: 'definitive' });
 });
 
 test('200 zonder checkoutUrl is een fout, geen redirect naar undefined', async () => {
@@ -120,6 +135,7 @@ test('200 zonder checkoutUrl is een fout, geen redirect naar undefined', async (
     plan: 'basic', attemptId: 'a', fetchImpl: impl,
   });
   assert.equal(result.ok, false);
+  assert.equal(result.kind, 'definitive');
 });
 
 test('netwerkfout geeft de Nederlandse verbindingstekst', async () => {
@@ -128,26 +144,45 @@ test('netwerkfout geeft de Nederlandse verbindingstekst', async () => {
     plan: 'basic', attemptId: 'a',
     fetchImpl: async () => { throw new TypeError('fetch failed'); },
   });
-  assert.deepEqual(result, { ok: false, error: NETWORK_CHECKOUT_ERROR });
+  assert.deepEqual(result, { ok: false, error: NETWORK_CHECKOUT_ERROR, kind: 'network' });
 });
 
-// ── Succestekst: juist plan, nooit stil Premium ─────────────────────────────
+// ── Mijn Ribba: portal via de edge function (geen Stripe-secret in Vercel) ──
 
-test('succestekst: basic → Basic, premium → Premium (URL-param, Mollie-flow)', () => {
-  assert.equal(successPlanLabel('basic', null), 'Basic');
-  assert.equal(successPlanLabel('premium', null), 'Premium');
+test('openStripePortal roept stripe-portal-session aan met JWT en school_id', async () => {
+  const { calls, impl } = fakeFetch(200, { url: 'https://billing.stripe.com/p/session/test_y' });
+  const result = await openStripePortal({
+    supabaseUrl: 'https://project.supabase.co',
+    accessToken: 'jwt-456',
+    schoolId: 'school-uuid',
+    fetchImpl: impl,
+  });
+  assert.deepEqual(result, { ok: true, url: 'https://billing.stripe.com/p/session/test_y' });
+  assert.equal(calls[0].url, 'https://project.supabase.co/functions/v1/stripe-portal-session');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer jwt-456');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { school_id: 'school-uuid' });
 });
 
-test('succestekst: zonder URL-param telt het opgeslagen plan (Stripe-flow)', () => {
-  assert.equal(successPlanLabel(null, 'basic'), 'Basic');
-  assert.equal(successPlanLabel(null, 'premium'), 'Premium');
+test('portal: serverfout (bv. 409 geen koppeling) toont de Nederlandse servertekst', async () => {
+  const { impl } = fakeFetch(409, { error: 'Er is nog geen actieve Stripe-koppeling voor deze rijschool. Kies eerst een abonnement via de upgradepagina.' });
+  const result = await openStripePortal({
+    supabaseUrl: 'https://p.supabase.co', accessToken: 't', schoolId: 's', fetchImpl: impl,
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /nog geen actieve Stripe-koppeling/);
 });
 
-test('succestekst: onbekend plan → neutraal (null), nooit stil Premium', () => {
-  assert.equal(successPlanLabel(null, null), null);
-  assert.equal(successPlanLabel('pro', 'iets'), null);
+test('portal: fout zonder bruikbare tekst valt terug op de generieke melding', async () => {
+  const { impl } = fakeFetch(500, {});
+  const result = await openStripePortal({
+    supabaseUrl: 'https://p.supabase.co', accessToken: 't', schoolId: 's', fetchImpl: impl,
+  });
+  assert.deepEqual(result, { ok: false, error: GENERIC_PORTAL_ERROR });
 });
 
-test('succestekst: URL-param wint van opgeslagen plan', () => {
-  assert.equal(successPlanLabel('basic', 'premium'), 'Basic');
+test('portalFunctionUrl verdraagt een trailing slash', () => {
+  assert.equal(
+    portalFunctionUrl('https://project.supabase.co/'),
+    'https://project.supabase.co/functions/v1/stripe-portal-session',
+  );
 });

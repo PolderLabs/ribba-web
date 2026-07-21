@@ -9,7 +9,6 @@ import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
 import {
   createCheckoutController,
   startStripeCheckout,
-  UPGRADE_PLAN_STORAGE_KEY,
   type UpgradePlan,
 } from '@/lib/stripe-upgrade';
 
@@ -197,19 +196,15 @@ function UpgradeContent() {
     });
 
     if (!result.ok) {
-      checkoutControllerRef.current.fail(plan);
+      // 'network' hervat dezelfde poging bij een nieuwe klik; 'definitive'
+      // sluit de poging af zodat de volgende klik een nieuwe attempt_id
+      // krijgt (Stripe cachet ook fouten op een idempotency-key).
+      checkoutControllerRef.current.fail(plan, result.kind);
       setError(result.error);
       setLoading(null);
       return;
     }
 
-    // Plan meegeven aan de succespagina: de Stripe-success-URL bevat alleen
-    // session_id, dus het gekozen plan reist via sessionStorage mee.
-    try {
-      sessionStorage.setItem(UPGRADE_PLAN_STORAGE_KEY, plan);
-    } catch {
-      // storage geblokkeerd → succespagina valt terug op neutrale tekst
-    }
     window.location.href = result.checkoutUrl;
   };
 

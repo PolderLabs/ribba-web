@@ -1,25 +1,14 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
 import RibbaLogo from '../../components/RibbaLogo';
 import { APP_STORE_URL } from '@/lib/app-links';
-import { successPlanLabel, UPGRADE_PLAN_STORAGE_KEY } from '@/lib/stripe-upgrade';
 
 function SuccessContent() {
-  const searchParams = useSearchParams();
-  // Mollie geeft ?plan= mee; de Stripe-flow zet het plan in sessionStorage
-  // vlak vóór de redirect. Onbekend → neutrale tekst, nooit stil 'Premium'.
-  const [planLabel, setPlanLabel] = useState<'Basic' | 'Premium' | null>(null);
-  useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = sessionStorage.getItem(UPGRADE_PLAN_STORAGE_KEY);
-    } catch {
-      // storage geblokkeerd → neutrale tekst
-    }
-    setPlanLabel(successPlanLabel(searchParams.get('plan'), stored));
-  }, [searchParams]);
+  // Bewust plan-neutraal (besluit 21 jul 2026): een losse ?plan=-parameter
+  // of client-side opslag mag niet zelfstandig bepalen wat als gekocht wordt
+  // gepresenteerd. Pas wanneer er een betrouwbare server-side bron is
+  // (Checkout Session/Subscription), mag hier weer een planlabel staan.
 
   useEffect(() => {
     // Auto-open app after 2 seconds
@@ -49,11 +38,9 @@ function SuccessContent() {
 
         <p className="pill pill-green">Betaling geslaagd</p>
 
-        <h1>{planLabel ? `Welkom bij Ribba ${planLabel}!` : 'Welkom bij Ribba!'}</h1>
+        <h1>Welkom bij Ribba!</h1>
         <p className="subtitle">
-          {planLabel
-            ? `Je abonnement is geactiveerd. Alle ${planLabel}-functies zijn nu beschikbaar in de app.`
-            : 'Je abonnement is geactiveerd. Alle functies zijn nu beschikbaar in de app.'}
+          Je abonnement is geactiveerd. Alle functies van je gekozen plan zijn nu beschikbaar in de app.
         </p>
 
         <a href="ribba://upgrade-success" className="btn-primary">

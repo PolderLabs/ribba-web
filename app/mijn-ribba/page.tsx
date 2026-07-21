@@ -2,14 +2,16 @@
 
 // Mijn Ribba — permanent klantportaal van Ribba (S4-ontwerp). Bewust
 // minimaal: Ribba authenticeert, en "Abonnement & facturatie" opent per
-// bezoek een VERSE Stripe Customer Portal-sessie via /api/portal. Stripe
-// blijft één onderdeel achter deze pagina; support en licenties blijven
-// bij Ribba.
+// bezoek een VERSE Stripe Customer Portal-sessie via de Supabase edge
+// function stripe-portal-session (B5: alle Stripe-secrets blijven in de
+// projectbrede Supabase-set; hier alleen de user-JWT). Stripe blijft één
+// onderdeel achter deze pagina; support en licenties blijven bij Ribba.
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
+import { openStripePortal } from '@/lib/stripe-upgrade';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -66,26 +68,17 @@ export default function MijnRibbaPage() {
       return;
     }
 
-    try {
-      const res = await fetch('/api/portal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ school_id: schoolId }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.url) {
-        setError(body.error || 'De beheerpagina kon niet worden geopend. Probeer het opnieuw.');
-        setPortalBusy(false);
-        return;
-      }
-      window.location.href = body.url;
-    } catch {
-      setError('Kan geen verbinding maken. Probeer het opnieuw.');
+    const result = await openStripePortal({
+      supabaseUrl,
+      accessToken: token,
+      schoolId,
+    });
+    if (!result.ok) {
+      setError(result.error);
       setPortalBusy(false);
+      return;
     }
+    window.location.href = result.url;
   };
 
   return (

@@ -4,14 +4,20 @@
 // deze module doet alleen: attempt-beheer, dubbelklik-blokkade en de
 // aanroep + Nederlandse foutafhandeling.
 //
-// attempt_id-semantiek (contract met de edge function, #228/F4):
+// attempt_id-semantiek (contract met de edge function, #228/F4; aangescherpt
+// 21 jul — Stripe cachet op een idempotency-key ook fóuten ~24u):
 // - één attempt_id per BEWUSTE checkoutpoging (klik op een plan);
-// - bij een fout blijft dezelfde attempt_id staan zodat een bewuste
-//   nieuwe poging voor hetzelfde plan de idempotency-key hergebruikt
-//   (Stripe ziet dat als dezelfde operatie);
-// - een ander plan is een andere poging → eigen attempt_id.
+// - NETWERKFOUT/ambigue uitkomst (geen antwoord ontvangen — de aanroep kán
+//   geslaagd zijn): zelfde attempt_id hergebruiken, dáárvoor bestaat
+//   idempotency;
+// - ONTVANGEN definitieve HTTP-fout: poging afgesloten; een bewuste nieuwe
+//   klik is een nieuwe poging met een NIEUWE attempt_id (anders blijft de
+//   gebruiker Stripe's gecachte fout herhalen);
+// - een ander plan is altijd een eigen poging met een eigen attempt_id.
 
 export type UpgradePlan = 'basic' | 'premium';
+
+export type CheckoutFailureKind = 'network' | 'definitive';
 
 export type CheckoutController = {
   /**
@@ -19,8 +25,12 @@ export type CheckoutController = {
    * een aanroep loopt (dubbelklik/tweede knop) — dan niets doen.
    */
   begin(plan: UpgradePlan): string | null;
-  /** Aanroep mislukt: knoppen weer vrij; attempt_id blijft voor retry. */
-  fail(plan: UpgradePlan): void;
+  /**
+   * Aanroep mislukt: knoppen weer vrij. 'network' → attempt_id blijft
+   * staan (zelfde poging hervatten); 'definitive' → poging afgesloten,
+   * de volgende klik krijgt een nieuwe attempt_id.
+   */
+  fail(plan: UpgradePlan, kind: CheckoutFailureKind): void;
   /** Alleen voor tests/weergave: loopt er nu een aanroep? */
   inFlight(): UpgradePlan | null;
 };
@@ -38,8 +48,9 @@ export function createCheckoutController(
       if (!attemptIds.has(plan)) attemptIds.set(plan, genUuid());
       return attemptIds.get(plan)!;
     },
-    fail(plan) {
+    fail(plan, kind) {
       if (inFlight === plan) inFlight = null;
+      if (kind === 'definitive') attemptIds.delete(plan);
     },
     inFlight() {
       return inFlight;
@@ -49,7 +60,7 @@ export function createCheckoutController(
 
 export type StartCheckoutResult =
   | { ok: true; checkoutUrl: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; kind: CheckoutFailureKind };
 
 /** Nederlandse fallback wanneer de server geen bruikbare fout meegeeft. */
 export const GENERIC_CHECKOUT_ERROR =
@@ -91,7 +102,8 @@ export async function startStripeCheckout(opts: {
       }),
     });
   } catch {
-    return { ok: false, error: NETWORK_CHECKOUT_ERROR };
+    // Geen antwoord ontvangen: uitkomst ambigu — zelfde poging mag hervatten.
+    return { ok: false, error: NETWORK_CHECKOUT_ERROR, kind: 'network' };
   }
 
   let body: { checkoutUrl?: unknown; error?: unknown } = {};
@@ -102,28 +114,66 @@ export async function startStripeCheckout(opts: {
   }
 
   if (!res.ok || typeof body.checkoutUrl !== 'string' || body.checkoutUrl === '') {
+    // Antwoord ontvangen: definitieve uitkomst — poging afsluiten.
     const serverError = typeof body.error === 'string' && body.error.trim() !== ''
       ? body.error
       : GENERIC_CHECKOUT_ERROR;
-    return { ok: false, error: serverError };
+    return { ok: false, error: serverError, kind: 'definitive' };
   }
   return { ok: true, checkoutUrl: body.checkoutUrl };
 }
 
-// ── Succespagina ────────────────────────────────────────────────────────────
-// De edge function zet alleen ?session_id= in de success-URL; het gekozen
-// plan reist daarom client-side mee via sessionStorage (gezet vlak vóór de
-// redirect naar Stripe). De Mollie-flow gebruikt ?plan= en blijft werken.
-// Onbekend plan → neutrale tekst, NOOIT stil "Premium" aannemen.
+// ── Mijn Ribba: portal via de edge function ─────────────────────────────────
+// Zelfde patroon als de checkout: de webclient roept geauthenticeerd de
+// Supabase edge function aan (stripe-portal-session) — alle Stripe-secrets
+// blijven binnen de projectbrede Supabase-secretset (B5), er staat niets
+// in Vercel. De return_url wordt server-side bepaald; de client stuurt
+// alleen school_id ter disambiguatie mee.
 
-export const UPGRADE_PLAN_STORAGE_KEY = 'ribba_upgrade_plan';
+export const GENERIC_PORTAL_ERROR =
+  'De beheerpagina kon niet worden geopend. Probeer het opnieuw of mail hallo@ribba.app.';
 
-export function successPlanLabel(
-  urlPlan: string | null,
-  storedPlan: string | null,
-): 'Basic' | 'Premium' | null {
-  const plan = urlPlan ?? storedPlan;
-  if (plan === 'basic') return 'Basic';
-  if (plan === 'premium') return 'Premium';
-  return null;
+export function portalFunctionUrl(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/stripe-portal-session`;
+}
+
+export type OpenPortalResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
+export async function openStripePortal(opts: {
+  supabaseUrl: string;
+  accessToken: string;
+  schoolId: string;
+  fetchImpl?: typeof fetch;
+}): Promise<OpenPortalResult> {
+  const doFetch = opts.fetchImpl ?? fetch;
+  let res: Response;
+  try {
+    res = await doFetch(portalFunctionUrl(opts.supabaseUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.accessToken}`,
+      },
+      body: JSON.stringify({ school_id: opts.schoolId }),
+    });
+  } catch {
+    return { ok: false, error: NETWORK_CHECKOUT_ERROR };
+  }
+
+  let body: { url?: unknown; error?: unknown } = {};
+  try {
+    body = await res.json();
+  } catch {
+    // lege/onleesbare body → generieke melding hieronder
+  }
+
+  if (!res.ok || typeof body.url !== 'string' || body.url === '') {
+    const serverError = typeof body.error === 'string' && body.error.trim() !== ''
+      ? body.error
+      : GENERIC_PORTAL_ERROR;
+    return { ok: false, error: serverError };
+  }
+  return { ok: true, url: body.url };
 }
