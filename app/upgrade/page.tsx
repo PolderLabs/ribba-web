@@ -1,11 +1,16 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
 import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+import {
+  createCheckoutController,
+  startStripeCheckout,
+  type UpgradePlan,
+} from '@/lib/stripe-upgrade';
 
 const basicPricing = getPlanPricing('basic');
 const premiumPricing = getPlanPricing('premium');
@@ -154,11 +159,37 @@ function UpgradeContent() {
     router.replace('/login');
   };
 
-  const handleCheckout = async (plan: 'basic' | 'premium') => {
+  // Stripe-checkout-bedrading: één attempt_id per bewuste poging, hergebruik
+  // bij een retry van hetzelfde plan, en dubbelklik-blokkade in de controller
+  // (naast de disabled-knop). De billinglogica leeft in de edge function.
+  const checkoutControllerRef = useRef(createCheckoutController());
+
+  // bfcache-herstel (correctieronde 21 jul): na een geslaagde checkout blijft
+  // de lock bewust staan tot de redirect naar Stripe. Keert de gebruiker via
+  // browser-back terug, dan herstelt Safari/Firefox/Chrome de pagina uit de
+  // back/forward-cache mét die actieve lock — zonder reset zouden de
+  // checkoutknoppen permanent dood zijn. pageshow met event.persisted=true is
+  // dé bfcache-detectie; bij een normale (verse) load is persisted false en
+  // gebeurt er niets. attempt_id-semantiek blijft onaangetast.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        checkoutControllerRef.current.reset();
+        setLoading(null);
+      }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
+  const handleCheckout = async (plan: UpgradePlan) => {
     if (!schoolId) {
       setError('Geen rijschool gekoppeld. Open deze pagina vanuit de Ribba app.');
       return;
     }
+
+    const attemptId = checkoutControllerRef.current.begin(plan);
+    if (attemptId === null) return; // er loopt al een poging (dubbelklik)
 
     setLoading(plan);
     setError(null);
@@ -174,29 +205,25 @@ function UpgradeContent() {
     }
     setAccessToken(token);
 
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ school_id: schoolId, plan }),
-      });
+    const result = await startStripeCheckout({
+      supabaseUrl,
+      accessToken: token,
+      schoolId,
+      plan,
+      attemptId,
+    });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Er ging iets mis.');
-        setLoading(null);
-        return;
-      }
-
-      window.location.href = data.checkoutUrl;
-    } catch {
-      setError('Kan geen verbinding maken. Probeer het opnieuw.');
+    if (!result.ok) {
+      // 'network' hervat dezelfde poging bij een nieuwe klik; 'definitive'
+      // sluit de poging af zodat de volgende klik een nieuwe attempt_id
+      // krijgt (Stripe cachet ook fouten op een idempotency-key).
+      checkoutControllerRef.current.fail(plan, result.kind);
+      setError(result.error);
       setLoading(null);
+      return;
     }
+
+    window.location.href = result.checkoutUrl;
   };
 
   const handleCancel = () => {
@@ -562,7 +589,11 @@ function UpgradeContent() {
         <div style={{ textAlign: 'center', marginTop: 48 }}>
           <p style={{ fontSize: 14, color: '#78716C', lineHeight: 1.8 }}>
             Annuleer wanneer je wilt. Geen verplichtingen.<br />
-            Alle prijzen zijn exclusief 21% btw; de incasso via Mollie is inclusief btw.
+            Alle prijzen zijn exclusief 21% btw; de incasso is inclusief btw.
+          </p>
+          <p style={{ fontSize: 14, color: '#78716C', marginTop: 8 }}>
+            Al een abonnement? Beheer facturen, betaalmethode en opzegging via{' '}
+            <a href="/mijn-ribba" style={{ color: '#2563EB', fontWeight: 600 }}>Mijn Ribba</a>.
           </p>
           <div className="divider" />
           <p style={{ fontSize: 13, color: '#A8A29E' }}>
