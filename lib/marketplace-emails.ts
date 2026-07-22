@@ -191,7 +191,7 @@ export async function sendRijschoolOutreachMail(input: OutreachMailInput): Promi
         ${rows}
       </table>
       ${berichtBlok}
-      <p style="margin:16px 0 0;font-size:13px;color:#64748B">Contactgegevens van de leerling worden zichtbaar zodra je de aanvraag accepteert. Tot die tijd verloopt alle communicatie anoniem via Ribba.</p>
+      <p style="margin:16px 0 0;font-size:13px;color:#64748B">Reageer eerst via de beveiligde chat. De contactgegevens van de leerling worden zichtbaar zodra de leerling deze zelf deelt — tot die tijd verloopt alle communicatie anoniem via Ribba.</p>
       ${appLinkBlock(`/r/${input.recipientId}`)}
     `,
     ctaLabel: 'Beantwoord de aanvraag',
@@ -233,6 +233,7 @@ export async function sendLeerlingBevestigingMail(input: LeerlingBevestigingInpu
       <p style="margin:0 0 12px">We hebben je aanvraag doorgestuurd naar ${count === 1 ? 'deze rijschool' : `deze ${count} rijscholen`}:</p>
       <ul style="margin:0 0 16px;padding-left:20px;font-size:14px;color:#0F172A">${lijst}</ul>
       <p style="margin:0 0 12px">Rijscholen reageren meestal <strong>binnen 24 uur</strong>. Zodra een rijschool antwoordt, krijg je van ons een e-mail met een link naar de beveiligde chat — geen account of app nodig.</p>
+      <p style="margin:0 0 12px;font-size:14px;color:#475569">Je chat volledig anoniem: <strong>jij bepaalt zelf of en wanneer je je contactgegevens deelt</strong>.</p>
       <p style="margin:0;font-size:13px;color:#64748B">Tip: houd ook je spam-map in de gaten, zodat je geen reactie mist.</p>
     `,
     footerHtml: `Je ontvangt dit bericht omdat je via ribba.app een informatie-aanvraag verstuurde.<br>`,

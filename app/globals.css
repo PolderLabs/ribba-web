@@ -796,6 +796,39 @@ a.text-link:hover {
   gap: 8px;
 }
 
+/* Contact delen (leerling-kant) */
+.chat-share-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: #FEFCE8;
+  border-bottom: 1px solid #FEF08A;
+  font-size: 13px;
+  color: #713F12;
+}
+
+.chat-share-button {
+  width: auto;
+  margin-top: 0;
+  padding: 9px 16px;
+  font-size: 14px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.chat-share-done {
+  color: #15803D;
+  font-weight: 600;
+}
+
+.chat-share-error {
+  color: #DC2626;
+  font-weight: 600;
+  width: 100%;
+}
+
 .chat-thread {
   flex: 1;
   overflow-y: auto;

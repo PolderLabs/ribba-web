@@ -15,9 +15,11 @@ import type { ChatContextData, ChatRole, InquiryRecipientStatus, MessageRow } fr
 interface ChatThreadProps {
   supabase: SupabaseClient;
   conversationId: string;
+  recipientId: string;
   role: ChatRole;
   counterpartName: string;
   status: InquiryRecipientStatus;
+  contactShared: boolean;
   inquiryPreview: ChatContextData['inquiry_preview'];
   contact: ChatContextData['contact'];
 }
@@ -33,18 +35,38 @@ function formatDay(iso: string): string {
 export default function ChatThread({
   supabase,
   conversationId,
+  recipientId,
   role,
   counterpartName,
   status,
+  contactShared,
   inquiryPreview,
   contact,
 }: ChatThreadProps) {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [shared, setShared] = useState(contactShared);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const counterpartRole: ChatRole = role === 'leerling' ? 'rijschool' : 'leerling';
+
+  // Leerling deelt zijn contactgegevens (contact-reveal ligt bij de leerling,
+  // niet bij accept — ribbaPro share_contact-RPC). Alleen zichtbaar/mogelijk
+  // als de rijschool geaccepteerd heeft en er nog niet gedeeld is.
+  async function handleShareContact() {
+    setSharing(true);
+    setShareError(null);
+    const { error } = await supabase.rpc('share_contact', { p_recipient_id: recipientId });
+    setSharing(false);
+    if (error) {
+      setShareError('Delen mislukt. Probeer het opnieuw.');
+      return;
+    }
+    setShared(true);
+  }
 
   // read_at kan alleen via de gedeelde RPC gezet worden (geen client-UPDATE
   // op messages) — zelfde pad als de ribbaPro-app straks gebruikt.
@@ -190,7 +212,7 @@ export default function ChatThread({
               </p>
             ) : (
               <p className="chat-anon-note">
-                Geanonimiseerd via Ribba{role === 'rijschool' ? ' — contactgegevens zichtbaar na accepteren in de app' : ''}
+                Geanonimiseerd via Ribba{role === 'rijschool' ? ' — contactgegevens zichtbaar zodra de leerling deze deelt' : ''}
               </p>
             )}
           </div>
@@ -206,6 +228,29 @@ export default function ChatThread({
             <GooglePlayBadge />
           </div>
         </div>
+
+        {/* Contact-reveal ligt bij de leerling: pas ná accept kan de leerling
+            zelf besluiten z'n gegevens te delen. */}
+        {role === 'leerling' && status === 'accepted' && (
+          <div className="chat-share-bar">
+            {shared ? (
+              <span className="chat-share-done">✓ Je contactgegevens zijn gedeeld met {counterpartName}.</span>
+            ) : (
+              <>
+                <span>{counterpartName} wil je helpen. Deel je contactgegevens om verder te plannen — jij bepaalt.</span>
+                <button
+                  type="button"
+                  className="btn-primary chat-share-button"
+                  onClick={handleShareContact}
+                  disabled={sharing}
+                >
+                  {sharing ? 'Delen…' : 'Deel contactgegevens'}
+                </button>
+                {shareError && <span className="chat-share-error">{shareError}</span>}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="chat-thread">
           {/* De aanvraag zelf als openingsbericht van de leerling — leest als

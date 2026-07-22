@@ -15,7 +15,8 @@
           { "/": "/reset" },
           { "/": "/reset/*" },
           { "/": "/i/*", "comment": "marketplace inquiry deep-link, leerling-kant (ribbaPro#139)" },
-          { "/": "/r/*", "comment": "marketplace recipient deep-link, rijschool-kant (ribbaPro#139)" }
+          { "/": "/r/*", "comment": "marketplace recipient deep-link, rijschool-kant (ribbaPro#139)" },
+          { "/": "/chat/*", "comment": "web-chat token-links uit de mails; app vangt ze af indien geinstalleerd, anders browser web-chat (ribbaPro#218)" }
         ]
       }
     ]

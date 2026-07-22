@@ -226,9 +226,11 @@ export default function ChatGateway({ token }: { token: string }) {
     <ChatThread
       supabase={getSupabase()}
       conversationId={conversationId!}
+      recipientId={info.recipient_id}
       role={info.role}
       counterpartName={info.counterpart_name}
       status={info.status}
+      contactShared={info.contact_shared}
       inquiryPreview={info.inquiry_preview}
       contact={info.contact}
     />

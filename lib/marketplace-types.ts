@@ -52,6 +52,7 @@ export interface InquiryRecipientRow {
   rijschool_chat_token: string;
   leerling_chat_token: string;
   chat_tokens_expire_at: string; // rolling: cron verlengt bij elke notificatiemail
+  contact_shared_at: string | null; // leerling deelde contactgegevens (ribbaPro share_contact)
   leerling_email_optout_at: string | null;
   rijschool_email_optout_at: string | null;
   created_at: string;
@@ -101,6 +102,9 @@ export interface ChatContextData {
   recipient_id: string;
   conversation_id: string | null;
   status: InquiryRecipientStatus;
+  // Contact-reveal wordt door de leerling bepaald (ribbaPro share_contact-RPC),
+  // niet door accept. true = leerling heeft z'n contactgegevens gedeeld.
+  contact_shared: boolean;
   claimed: boolean;
   expected_email_masked: string | null;
   counterpart_name: string;
