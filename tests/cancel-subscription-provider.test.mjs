@@ -70,9 +70,13 @@ function makeMollie({ cancelError } = {}) {
   };
 }
 
-function installFetch({ ok = true, status = 200, body = {} } = {}) {
+function installFetch({ ok = true, status = 200, body = {}, throwError = null } = {}) {
   fetchCalls = [];
-  globalThis.fetch = async (url, opts) => { fetchCalls.push({ url, opts }); return { ok, status, json: async () => body }; };
+  globalThis.fetch = async (url, opts) => {
+    fetchCalls.push({ url, opts });
+    if (throwError) throw throwError;
+    return { ok, status, json: async () => body };
+  };
 }
 
 function makeReq({ auth = 'Bearer valid-token', schoolId = 'school-1' } = {}) {
@@ -178,7 +182,52 @@ test('geen actieve Stripe-sub én geen Mollie-koppeling → 404, niets aangeroep
   assert.equal(fetchCalls.length, 0);
 });
 
-// ── 5. Onbevoegd ─────────────────────────────────────────────────────────────
+// ── 6. Fail closed bij onbetrouwbare providerdata / hangende delegatie ───────
+test('Stripe-lookup queryfout → fail closed 500, niets opgezegd, Mollie niet aangeroepen', async () => {
+  reset();
+  currentClient = makeClient([
+    { data: { id: 'instr-1' }, error: null },
+    { data: null, error: { message: 'db unavailable' } }, // Stripe-query FAALT
+  ]);
+  const res = await POST(makeReq());
+  assert.equal(res.status, 500);
+  assert.equal(mollie.calls.cancel.length, 0);
+  assert.equal(fetchCalls.length, 0);
+  assert.deepEqual(billingEvents.map((e) => e.event_type), ['cancel_provider_lookup_failed']);
+  // gestopt na de Stripe-query: geen licentie-query, geen doorval
+  assert.equal(currentClient.calls.length, 2);
+});
+
+test('licentie-lookup queryfout → fail closed 500, niets opgezegd, Mollie niet aangeroepen', async () => {
+  reset();
+  currentClient = makeClient([
+    { data: { id: 'instr-1' }, error: null },
+    { data: [], error: null },                        // Stripe ok, geen actieve
+    { data: null, error: { message: 'db timeout' } }, // licentie-query FAALT
+  ]);
+  const res = await POST(makeReq());
+  assert.equal(res.status, 500);
+  assert.equal(mollie.calls.cancel.length, 0);
+  assert.equal(fetchCalls.length, 0);
+  assert.deepEqual(billingEvents.map((e) => e.event_type), ['cancel_provider_lookup_failed']);
+});
+
+test('edge-function time-out (AbortError) → fail closed 504, niets lokaal gemuteerd, Mollie niet aangeroepen', async () => {
+  reset();
+  installFetch({ throwError: Object.assign(new Error('aborted'), { name: 'AbortError' }) });
+  currentClient = makeClient([
+    { data: { id: 'instr-1' }, error: null },
+    { data: [{ id: 'ssub-1' }], error: null },        // actieve Stripe
+    { data: { id: 'lic-1', mollie_customer_id: null, external_subscription_id: null }, error: null },
+  ]);
+  const res = await POST(makeReq());
+  assert.equal(res.status, 504);
+  assert.equal(mollie.calls.cancel.length, 0);
+  assert.equal(fetchCalls.length, 1); // delegatie geprobeerd, maar afgebroken
+  assert.deepEqual(billingEvents.map((e) => e.event_type), ['stripe_cancel_delegation_unreachable']);
+});
+
+// ── 7. Onbevoegd ─────────────────────────────────────────────────────────────
 test('ontbrekende Bearer → 401 (geen enkele lookup)', async () => {
   reset();
   currentClient = makeClient([]);

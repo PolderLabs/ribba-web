@@ -52,16 +52,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Provider-bepaling op de ACTUELE actieve Stripe-status (niet "ooit een rij").
-    const { data: activeStripe } = await supabase
+    // Fail closed: bij een queryfout mag NIET met onbetrouwbare providerdata
+    // worden doorgevallen naar Mollie of Stripe — stoppen, loggen, generieke 500.
+    const { data: activeStripe, error: activeStripeError } = await supabase
       .from('school_subscriptions')
       .select('id')
       .eq('school_id', school_id)
       .in('stripe_status', ACTIVE_STRIPE_STATUSES)
       .limit(1);
+    if (activeStripeError) {
+      await logBillingEvent({
+        school_id,
+        event_type: 'cancel_provider_lookup_failed',
+        source: 'cancel-subscription',
+        payload: { query: 'school_subscriptions', error: String(activeStripeError.message ?? activeStripeError).slice(0, 300) },
+      });
+      return NextResponse.json({ error: 'Kon de abonnementsstatus niet bepalen. Probeer het later opnieuw.' }, { status: 500 });
+    }
     const hasActiveStripe = (activeStripe?.length ?? 0) > 0;
 
     // Actieve licentie — nodig voor de Mollie-tak én de conflictdetectie.
-    const { data: license } = await supabase
+    const { data: license, error: licenseError } = await supabase
       .from('instructor_licenses')
       .select('id, mollie_customer_id, external_subscription_id, billing_plan')
       .eq('school_id', school_id)
@@ -69,6 +80,15 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (licenseError) {
+      await logBillingEvent({
+        school_id,
+        event_type: 'cancel_provider_lookup_failed',
+        source: 'cancel-subscription',
+        payload: { query: 'instructor_licenses', error: String(licenseError.message ?? licenseError).slice(0, 300) },
+      });
+      return NextResponse.json({ error: 'Kon de abonnementsstatus niet bepalen. Probeer het later opnieuw.' }, { status: 500 });
+    }
     const hasMollie = Boolean(license?.mollie_customer_id && license?.external_subscription_id);
 
     // Fail closed: twee actieve providers tegelijk → niets opzeggen, conflict loggen.
@@ -94,19 +114,42 @@ export async function POST(request: NextRequest) {
     // (opzeggen per einde betaalde periode, nooit direct).
     if (hasActiveStripe) {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const edgeRes = await fetch(`${supabaseUrl}/functions/v1/stripe-cancel-subscription`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-        body: JSON.stringify({ school_id }),
-      });
-      const edgeData = await edgeRes.json().catch(() => ({}));
-      if (!edgeRes.ok) {
+      // Begrensde timeout: een trage/hangende edge function mag deze handler niet
+      // onbegrensd blokkeren. Timer wordt altijd in finally opgeruimd.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const edgeRes = await fetch(`${supabaseUrl}/functions/v1/stripe-cancel-subscription`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+          body: JSON.stringify({ school_id }),
+          signal: controller.signal,
+        });
+        const edgeData = await edgeRes.json().catch(() => ({}));
+        if (!edgeRes.ok) {
+          return NextResponse.json(
+            { error: edgeData?.error ?? 'Kon het abonnement niet opzeggen.' },
+            { status: edgeRes.status },
+          );
+        }
+        return NextResponse.json({ success: true, provider: 'stripe', ...edgeData });
+      } catch (edgeErr) {
+        // Time-out of netwerkfout richting de edge function → fail closed, er is
+        // NIETS lokaal gemuteerd. De fout zit downstream → 504 (time-out) / 502.
+        const isTimeout = edgeErr instanceof Error && edgeErr.name === 'AbortError';
+        await logBillingEvent({
+          school_id,
+          event_type: 'stripe_cancel_delegation_unreachable',
+          source: 'cancel-subscription',
+          payload: { reason: isTimeout ? 'timeout' : 'fetch_error', error: String(edgeErr).slice(0, 300) },
+        });
         return NextResponse.json(
-          { error: edgeData?.error ?? 'Kon het abonnement niet opzeggen.' },
-          { status: edgeRes.status },
+          { error: 'De opzegverwerking is tijdelijk niet bereikbaar. Probeer het later opnieuw.' },
+          { status: isTimeout ? 504 : 502 },
         );
+      } finally {
+        clearTimeout(timeoutId);
       }
-      return NextResponse.json({ success: true, provider: 'stripe', ...edgeData });
     }
 
     // Geen enkel actief abonnement (geen live Stripe-sub én geen Mollie-koppeling).
