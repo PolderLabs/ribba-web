@@ -1,11 +1,17 @@
-// register-school — pint vast dat de REGISTRATIE-OPRICHTER als school-admin
-// wordt aangemaakt (correctie 21 jul 2026). Sinds F3.1A is de DB-default
-// voor instructors.school_role de veilige 'employee'; alle rolgevoelige
-// domeinen (financiën, Stripe Billing Portal) zijn admin-only. De oprichter
-// van een nieuwe school moet die rol dus expliciet meekrijgen — anders is
-// een via de web geregistreerde school direct beheerder-loos. Invite-paden
+// register-school — pint vast dat de REGISTRATIE-OPRICHTER als eigenaar
+// (school_role='owner', eigenaar-SSOT sinds ribbaPro-migratie 20260724160000)
+// wordt aangemaakt. Sinds F3.1A is de DB-default voor instructors.school_role
+// de veilige 'employee'; alle rolgevoelige domeinen (financiën, Stripe
+// Billing Portal) zijn admin-niveau ('owner'/'admin'). De oprichter van een
+// nieuwe school moet de eigenaarsrol dus expliciet meekrijgen — anders is
+// een via de web geregistreerde school direct eigenaar-loos. Invite-paden
 // blijven buiten dit bestand: die maken hun instructeursrijen in ribbaPro
-// aan en behouden daar hun bestaande rolgedrag (default employee).
+// aan en behouden daar hun bestaande rolgedrag (default employee; invites
+// kunnen nooit een owner opleveren).
+//
+// Pint daarnaast het fail-closed-gedrag vast: weigert de database 'owner'
+// (CHECK-constraint, migratie niet toegepast), dan faalt registratie hard
+// mét volledige cleanup — géén stille fallback naar 'admin'.
 
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,6 +22,9 @@ process.env.NEXT_PUBLIC_BASE_URL = 'https://preview.test';
 delete process.env.RESEND_API_KEY; // e-mailpad slaat dan netjes over
 
 const inserts = []; // { table, payload }
+const deletes = []; // { table, column, value }
+const deletedAuthUsers = []; // user ids
+let failInstructorInsertWith = null; // Postgres-error om instructor-insert mee te laten falen
 
 function makeFakeSupabase() {
   return {
@@ -28,7 +37,10 @@ function makeFakeSupabase() {
           },
           error: null,
         }),
-        deleteUser: async () => ({ error: null }),
+        deleteUser: async (id) => {
+          deletedAuthUsers.push(id);
+          return { error: null };
+        },
       },
     },
     from(table) {
@@ -39,18 +51,26 @@ function makeFakeSupabase() {
         }),
         insert(payload) {
           inserts.push({ table, payload });
+          const failThis = table === 'instructors' && failInstructorInsertWith;
           return {
             // pad mét .select('id').single() (drivingschools/instructors)
             select: () => ({
-              single: async () => ({
-                data: { id: `${table}-1` },
-                error: null,
-              }),
+              single: async () =>
+                failThis
+                  ? { data: null, error: failInstructorInsertWith }
+                  : { data: { id: `${table}-1` }, error: null },
             }),
             // pad dat direct ge-await wordt (licenses/invitation_links)
             then: (resolve) => resolve({ data: null, error: null }),
           };
         },
+        // cleanup-pad: .delete().eq('id', ...) wordt direct ge-await
+        delete: () => ({
+          eq: (column, value) => {
+            deletes.push({ table, column, value });
+            return Promise.resolve({ error: null });
+          },
+        }),
       };
     },
   };
@@ -83,6 +103,13 @@ mock.module('@/lib/legal-acceptances', {
 
 const { POST } = await import('../app/api/register-school/route.ts');
 
+function resetState() {
+  inserts.length = 0;
+  deletes.length = 0;
+  deletedAuthUsers.length = 0;
+  failInstructorInsertWith = null;
+}
+
 function makeRequest() {
   return {
     headers: { get: () => null },
@@ -104,14 +131,14 @@ function makeRequest() {
   };
 }
 
-test('registratie-oprichter wordt aangemaakt met school_role=admin', async () => {
-  inserts.length = 0;
+test('registratie-oprichter wordt aangemaakt met school_role=owner', async () => {
+  resetState();
   const res = await POST(makeRequest());
   assert.equal(res.status, 200);
 
   const instructorInserts = inserts.filter((i) => i.table === 'instructors');
   assert.equal(instructorInserts.length, 1); // precies één instructeursrij
-  assert.equal(instructorInserts[0].payload.school_role, 'admin');
+  assert.equal(instructorInserts[0].payload.school_role, 'owner');
   assert.equal(instructorInserts[0].payload.user_id, 'auth-user-1');
   assert.equal(instructorInserts[0].payload.status, 'active');
 
@@ -122,4 +149,31 @@ test('registratie-oprichter wordt aangemaakt met school_role=admin', async () =>
   assert.equal(inviteInserts.length, 1);
   assert.equal(inviteInserts[0].payload.invite_type, 'student');
   assert.equal('school_role' in inviteInserts[0].payload, false);
+});
+
+test('CHECK-weigering van owner → harde 500 mét cleanup, geen fallback naar admin', async () => {
+  resetState();
+  failInstructorInsertWith = {
+    code: '23514',
+    message:
+      'new row for relation "instructors" violates check constraint "instructors_school_role_check"',
+  };
+
+  const res = await POST(makeRequest());
+  assert.equal(res.status, 500);
+
+  // Eén poging met 'owner', géén tweede insert met 'admin' als fallback
+  const instructorInserts = inserts.filter((i) => i.table === 'instructors');
+  assert.equal(instructorInserts.length, 1);
+  assert.equal(instructorInserts[0].payload.school_role, 'owner');
+
+  // Volledige cleanup: school verwijderd én auth-user verwijderd
+  const schoolDeletes = deletes.filter((d) => d.table === 'drivingschools');
+  assert.equal(schoolDeletes.length, 1);
+  assert.equal(schoolDeletes[0].value, 'drivingschools-1');
+  assert.deepEqual(deletedAuthUsers, ['auth-user-1']);
+
+  // Geen vervolg-writes na de mislukte instructeur (license/invite-link)
+  assert.equal(inserts.filter((i) => i.table === 'instructor_licenses').length, 0);
+  assert.equal(inserts.filter((i) => i.table === 'invitation_links').length, 0);
 });

@@ -301,23 +301,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Insert instructor — de registratie-oprichter is de beheerder van de
-    // nieuwe school en wijkt daarom bewust af van de veilige DB-default
-    // school_role='employee' (die default beschermt alle overige aanmaakpaden,
-    // zoals invites).
+    // 4. Insert instructor — de registratie-oprichter is de eigenaar van de
+    // nieuwe school (eigenaar-SSOT, ribbaPro-migratie 20260724160000) en wijkt
+    // daarom bewust af van de veilige DB-default school_role='employee' (die
+    // default beschermt alle overige aanmaakpaden, zoals invites).
+    // Bewust géén fallback naar 'admin' als de database 'owner' weigert:
+    // stil terugvallen zou een school zonder eigenaar aanmaken. Registratie
+    // faalt dan hard (met volledige cleanup hieronder) — de deploy-volgorde
+    // eist dat de migratie vóór deze code live is.
     const { data: instructor, error: instructorError } = await supabase
       .from('instructors')
       .insert({
         user_id: authUserId,
         drivingschool_id: school.id,
         status: 'active',
-        school_role: 'admin',
+        school_role: 'owner',
       })
       .select('id')
       .single();
 
     if (instructorError || !instructor) {
-      console.error('Instructor insert error:', instructorError);
+      if (instructorError?.code === '23514') {
+        // check_violation — vrijwel zeker instructors_school_role_check die
+        // 'owner' nog niet kent: ribbaPro-migratie 20260724160000 ontbreekt.
+        console.error(
+          'Instructor insert geweigerd door CHECK-constraint. Is ribbaPro-migratie 20260724160000 (school_role owner) toegepast?',
+          instructorError,
+        );
+      } else {
+        console.error('Instructor insert error:', instructorError);
+      }
       // Cleanup
       await supabase.from('drivingschools').delete().eq('id', school.id);
       await supabase.auth.admin.deleteUser(authUserId);
