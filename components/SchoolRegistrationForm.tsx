@@ -248,7 +248,7 @@ export default function SchoolRegistrationForm() {
     }
   }
 
-  function handleLegalFormChange(value: LegalForm) {
+  function handleLegalFormChange(value: LegalForm | '') {
     setForm((prev) => ({
       ...prev,
       legal_form: value,
@@ -293,40 +293,22 @@ export default function SchoolRegistrationForm() {
       <div className="form-grid">
         {/* Bedrijfsvorm */}
         <div className="form-group full-width">
-          <label>Bedrijfsvorm</label>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {LEGAL_FORMS.map((lf) => {
-              const selected = form.legal_form === lf.value;
-              return (
-                <label
-                  key={lf.value}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '10px 16px',
-                    borderRadius: 10,
-                    border: selected ? '2px solid #2563EB' : '1px solid #d6d3d1',
-                    background: selected ? '#eff6ff' : '#fff',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: selected ? 700 : 500,
-                    color: selected ? '#2563EB' : '#44403C',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="legal_form"
-                    value={lf.value}
-                    checked={selected}
-                    onChange={() => handleLegalFormChange(lf.value)}
-                    style={{ accentColor: '#2563EB' }}
-                  />
-                  {lf.label}
-                </label>
-              );
-            })}
-          </div>
+          <label htmlFor="legal_form">Bedrijfsvorm</label>
+          <select
+            id="legal_form"
+            className={errors.legal_form ? 'error' : ''}
+            value={form.legal_form}
+            onChange={(e) => handleLegalFormChange(e.target.value as LegalForm | '')}
+          >
+            <option value="" disabled>
+              Kies bedrijfsvorm
+            </option>
+            {LEGAL_FORMS.map((lf) => (
+              <option key={lf.value} value={lf.value}>
+                {lf.label}
+              </option>
+            ))}
+          </select>
           {errors.legal_form && <p className="form-error">{errors.legal_form}</p>}
         </div>
 
