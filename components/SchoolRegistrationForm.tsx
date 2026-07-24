@@ -294,7 +294,7 @@ export default function SchoolRegistrationForm() {
         {/* Bedrijfsvorm */}
         <div className="form-group full-width">
           <label>Bedrijfsvorm</label>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div className="legal-form-options">
             {LEGAL_FORMS.map((lf) => {
               const selected = form.legal_form === lf.value;
               return (
@@ -313,12 +313,6 @@ export default function SchoolRegistrationForm() {
                     fontSize: 14,
                     fontWeight: selected ? 700 : 500,
                     color: selected ? '#2563EB' : '#44403C',
-                    // Niet laten krimpen: op smalle (mobiele) schermen wrappen
-                    // de pills netjes naar een nieuwe regel i.p.v. dat het
-                    // label wordt afgekapt. flexBasis zorgt voor gelijke,
-                    // comfortabel aantikbare pills die de regel vullen.
-                    flex: '1 1 auto',
-                    minWidth: 'max-content',
                     whiteSpace: 'nowrap',
                   }}
                 >
