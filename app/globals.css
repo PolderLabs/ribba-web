@@ -260,20 +260,6 @@ h1 {
   }
 }
 
-/* Bedrijfsvorm-keuze: drie gelijke pills naast elkaar; onder 520px stapelen
-   ze tot volle breedte zodat lange labels (Eenmanszaak) nooit afkappen. */
-.legal-form-options {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-@media (max-width: 520px) {
-  .legal-form-options {
-    grid-template-columns: 1fr;
-  }
-}
-
 .form-group {
   text-align: left;
 }
