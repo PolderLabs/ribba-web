@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { pickEffectiveLicense } from '@/lib/effective-license';
 
 function getSupabase() {
   return createClient(
@@ -27,9 +28,18 @@ export async function GET(req: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
+    // LEZEN blijft toegestaan voor elke actieve instructeur van de school.
+    // Bewust géén rolbeperking hier: de Pro-app laat schoolinstructeurs de
+    // licentie al lezen via RLS ("School instructors can view licenses in
+    // their school"), dus een 403 zou hier niets afschermen maar wél de
+    // /upgrade-pagina slopen — die stuurt bij 403 door naar /login
+    // (app/upgrade/page.tsx), wat een medewerker in een lus zet terwijl hij
+    // gewoon is ingelogd. De BEVOEGDHEID wordt in de response meegegeven
+    // (canManageSubscription) en afgedwongen op de schrijfroutes
+    // (/api/checkout, /api/cancel-subscription).
     const { data: instructor } = await supabase
       .from('instructors')
-      .select('id')
+      .select('id, school_role')
       .eq('user_id', user.id)
       .eq('drivingschool_id', schoolId)
       .eq('status', 'active')
@@ -37,15 +47,31 @@ export async function GET(req: NextRequest) {
     if (!instructor) {
       return NextResponse.json({ error: 'Geen toegang.' }, { status: 403 });
     }
-    const { data, error } = await supabase
-      .from('instructor_licenses')
-      .select('billing_plan, is_trial, trial_ends_at, cancelled_at, period_end')
-      .eq('school_id', schoolId)
-      .eq('status', 'active')
-      .single();
 
-    if (error || !data) {
-      return NextResponse.json({ plan: null });
+    const schoolRole = (instructor as { school_role?: string | null }).school_role ?? null;
+    // Admin-niveau = owner óf admin (fase 0; wordt owner-only in fase 2, na de
+    // owner-backfill). Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md
+    // in ribbaPro.
+    const canManageSubscription = schoolRole === 'owner' || schoolRole === 'admin';
+
+    // Alle actieve licentierijen van de school + deterministische reductie.
+    // Was `.single()`: bij een school met twee instructeurs (= twee rijen)
+    // gaf PostgREST een fout, viel de route terug op `{ plan: null }` en las
+    // een BETALENDE school op de website als "geen abonnement" — inclusief
+    // koopknoppen. Dezelfde reductie als de Pro-app gebruikt.
+    const { data: rows, error } = await supabase
+      .from('instructor_licenses')
+      .select('billing_plan, is_trial, trial_ends_at, cancelled_at, period_end, created_at')
+      .eq('school_id', schoolId)
+      .eq('status', 'active');
+
+    if (error) {
+      return NextResponse.json({ plan: null, schoolRole, canManageSubscription });
+    }
+
+    const data = pickEffectiveLicense(rows ?? []);
+    if (!data) {
+      return NextResponse.json({ plan: null, schoolRole, canManageSubscription });
     }
 
     // Normaliseer DB-staat naar wat de frontend verwacht.
@@ -81,6 +107,8 @@ export async function GET(req: NextRequest) {
       cancelledAt: data.cancelled_at,
       periodEnd: data.period_end,
       isExpired,
+      schoolRole,
+      canManageSubscription,
     });
   } catch {
     return NextResponse.json({ plan: null });
