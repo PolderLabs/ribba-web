@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
@@ -49,6 +50,24 @@ function generateSlug(name: string): string {
 
 const VERIFY_REDIRECT_URL = 'https://link.ribba.app/welkom';
 
+/**
+ * Deterministische idempotentiesleutel voor create_school_with_owner.
+ *
+ * HARDE EIS (F0-ontwerp): dezelfde registratiepoging moet dezelfde sleutel
+ * opleveren, anders vervalt de idempotentie-garantie van de claims-tabel en
+ * blijft alleen de unieke instructors.user_id als vangnet over. Daarom
+ * afgeleid van het genormaliseerde e-mailadres — niet van een random waarde,
+ * timestamp of request-id.
+ *
+ * Gehasht zodat de sleutel opaak en vast van lengte is; het e-mailadres zelf
+ * staat leesbaar in de kolom school_registration_claims.email.
+ */
+function registrationOperationKey(emailLower: string): string {
+  return createHash('sha256')
+    .update(`school-registration:v1:${emailLower}`)
+    .digest('hex');
+}
+
 async function sendEmail(to: string, subject: string, html: string) {
   if (!resendApiKey) {
     console.warn('RESEND_API_KEY not set, skipping email');
@@ -77,6 +96,12 @@ export async function POST(request: NextRequest) {
   }
 
   let authUserId: string | null = null;
+  // Vanaf het moment dat de RPC commit bestaat de school écht. De outer catch
+  // mag de auth-user dan NIET meer verwijderen: dat zou een school achterlaten
+  // met een instructeur die naar een verwijderd account wijst — precies de
+  // wees-rij die F0 uitbant. Side-effects ná de commit mogen nooit meer
+  // terugwerken op de registratie zelf.
+  let registrationCommitted = false;
   const supabase = getSupabase();
 
   try {
@@ -200,6 +225,41 @@ export async function POST(request: NextRequest) {
     }
 
     const emailLower = email.trim().toLowerCase();
+    const operationKey = registrationOperationKey(emailLower);
+
+    // 0. IDEMPOTENTIE-PRECHECK — hervat een registratie die al gecommit is.
+    //    Scenario dat dit oplost: een eerdere poging heeft de RPC succesvol
+    //    uitgevoerd (school + owner + trial staan er), maar de caller hoorde
+    //    dat niet (serverless-timeout). Zonder deze check zou de retry stranden
+    //    op "e-mailadres al in gebruik" bij generateLink, terwijl de registratie
+    //    juist geslaagd is — de 409-wedge uit het F0-onderzoek.
+    const { data: existingClaim, error: claimLookupError } = await supabase
+      .from('school_registration_claims')
+      .select('school_id, instructor_id, status')
+      .eq('operation_key', operationKey)
+      .maybeSingle();
+
+    if (claimLookupError) {
+      // Niet fataal: we vallen terug op het normale pad. Bestond er toch een
+      // claim, dan geeft de RPC straks 'already_created' — nog steeds geen
+      // duplicaat, alleen een minder nette 409 bij generateLink.
+      console.error('Claim lookup error (niet fataal):', claimLookupError);
+    }
+
+    if (existingClaim?.status === 'completed' && existingClaim.school_id) {
+      // De registratie is eerder al volledig gecommit. Geen tweede school, geen
+      // tweede auth-user: gewoon succes teruggeven.
+      //
+      // BEKENDE BEPERKING: de bevestigingsmail kan hier niet opnieuw worden
+      // verstuurd — de action_link komt uitsluitend uit generateLink, en dat
+      // faalt voor een bestaand account. Kreeg de gebruiker in de eerste poging
+      // geen mail, dan is "wachtwoord vergeten" de route. Bewust zo gelaten in
+      // plaats van een ongeverifieerd hersteldpad te bouwen.
+      console.warn(
+        `[register-school] hervatte registratie (claim bestond al) school=${existingClaim.school_id}`,
+      );
+      return NextResponse.json({ success: true });
+    }
 
     // 1. Create auth user as UNCONFIRMED + generate signup confirmation link.
     //    `generateLink({ type: 'signup' })` creates the user (unconfirmed) and
@@ -263,37 +323,49 @@ export async function POST(request: NextRequest) {
     }
     slug = slugAttempt;
 
-    // 3. Insert driving school
-    const { data: school, error: schoolError } = await supabase
-      .from('drivingschools')
-      .insert({
-        name: school_name.trim(),
-        // country_code expliciet meesturen — de kolomdefault 'NL' is een
-        // overgangsmaatregel en gaat eraf zodra dit pad live is.
-        country_code: profile.code,
-        legal_form,
-        legal_name: requiresLegalName(legal_form) ? legalNameTrimmed : null,
-        address: address.trim(),
-        postal_code: normalizePostcode(postal_code),
-        city: city.trim(),
-        billing_address: useBilling ? billingRaw[0] : null,
-        billing_postal_code: useBilling ? normalizePostcode(billingRaw[1]) : null,
-        billing_city: useBilling ? billingRaw[2] : null,
-        phone: phone.trim(),
-        email: emailLower,
-        kvk_number: normalizeBusinessRegister(kvk_number),
-        btw_number: btw_number && btw_number.trim() !== '' ? normalizeVat(btw_number) : null,
-        iban: null,
-        registration_slug: slug,
-        registration_enabled: true,
-        status: 'active',
-      })
-      .select('id')
-      .single();
+    // 3. ATOMAIRE CREATIE — school + eigenaar + trial in ÉÉN transactie.
+    //
+    // Vervangt de drie losse inserts van vóór F0. Die konden bij een fout of
+    // serverless-timeout halverwege blijven steken: de outer catch ruimde
+    // alleen de auth-user op, niet de al aangemaakte school/instructeur, en de
+    // licentie-insert was non-fataal (school zonder entitlement → de app leest
+    // 'expired'). De RPC is alles-of-niets: faalt één stap, dan bestaat er
+    // niets — geen wees-rijen, geen cleanup-logica meer nodig aan deze kant.
+    //
+    // De slug wordt bewust meegegeven: de DB-trigger genereert hem anders
+    // zónder koppeltekens, wat het publieke inschrijflink-formaat zou wijzigen.
+    // De trigger doet daarna de definitieve collision-resolutie.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'create_school_with_owner',
+      {
+        p_operation_key: operationKey,
+        p_user_id: authUserId,
+        p_school: {
+          name: school_name.trim(),
+          // country_code expliciet meesturen — de kolomdefault 'NL' is een
+          // overgangsmaatregel en gaat eraf zodra dit pad live is.
+          country_code: profile.code,
+          legal_form,
+          legal_name: requiresLegalName(legal_form) ? legalNameTrimmed : null,
+          address: address.trim(),
+          postal_code: normalizePostcode(postal_code),
+          city: city.trim(),
+          billing_address: useBilling ? billingRaw[0] : null,
+          billing_postal_code: useBilling ? normalizePostcode(billingRaw[1]) : null,
+          billing_city: useBilling ? billingRaw[2] : null,
+          phone: phone.trim(),
+          email: emailLower,
+          kvk_number: normalizeBusinessRegister(kvk_number),
+          btw_number: btw_number && btw_number.trim() !== '' ? normalizeVat(btw_number) : null,
+          registration_slug: slug,
+        },
+      },
+    );
 
-    if (schoolError || !school) {
-      console.error('School insert error:', schoolError);
-      // Cleanup: delete auth user
+    if (rpcError) {
+      console.error('create_school_with_owner error:', rpcError);
+      // De transactie is volledig teruggerold: er is géén school, instructeur,
+      // licentie of claim. Alleen de auth-user (buiten de transactie) resteert.
       await supabase.auth.admin.deleteUser(authUserId);
       return NextResponse.json(
         { error: 'Kon rijschool niet aanmaken. Probeer het opnieuw.' },
@@ -301,64 +373,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Insert instructor — de registratie-oprichter is de eigenaar van de
-    // nieuwe school (eigenaar-SSOT, ribbaPro-migratie 20260724160000) en wijkt
-    // daarom bewust af van de veilige DB-default school_role='employee' (die
-    // default beschermt alle overige aanmaakpaden, zoals invites).
-    // Bewust géén fallback naar 'admin' als de database 'owner' weigert:
-    // stil terugvallen zou een school zonder eigenaar aanmaken. Registratie
-    // faalt dan hard (met volledige cleanup hieronder) — de deploy-volgorde
-    // eist dat de migratie vóór deze code live is.
-    const { data: instructor, error: instructorError } = await supabase
-      .from('instructors')
-      .insert({
-        user_id: authUserId,
-        drivingschool_id: school.id,
-        status: 'active',
-        school_role: 'owner',
-      })
-      .select('id')
-      .single();
+    const outcome = (rpcResult as { outcome?: string } | null)?.outcome;
 
-    if (instructorError || !instructor) {
-      if (instructorError?.code === '23514') {
-        // check_violation — vrijwel zeker instructors_school_role_check die
-        // 'owner' nog niet kent: ribbaPro-migratie 20260724160000 ontbreekt.
-        console.error(
-          'Instructor insert geweigerd door CHECK-constraint. Is ribbaPro-migratie 20260724160000 (school_role owner) toegepast?',
-          instructorError,
-        );
-      } else {
-        console.error('Instructor insert error:', instructorError);
-      }
-      // Cleanup
-      await supabase.from('drivingschools').delete().eq('id', school.id);
+    if (outcome === 'busy') {
+      // Een gelijktijdige registratie met dezelfde sleutel is nog bezig.
+      // Onze eigen auth-user is dan overbodig — opruimen en de gebruiker
+      // vragen het zo opnieuw te proberen.
+      console.warn('[register-school] busy: gelijktijdige registratie in behandeling');
       await supabase.auth.admin.deleteUser(authUserId);
       return NextResponse.json(
-        { error: 'Kon instructeur niet aanmaken. Probeer het opnieuw.' },
+        { error: 'Je registratie wordt al verwerkt. Probeer het over enkele seconden opnieuw.' },
+        { status: 409 },
+      );
+    }
+
+    const schoolId = (rpcResult as { school_id?: string } | null)?.school_id;
+    const instructorId = (rpcResult as { instructor_id?: string } | null)?.instructor_id;
+
+    if ((outcome !== 'created' && outcome !== 'already_created') || !schoolId || !instructorId) {
+      console.error('create_school_with_owner onverwachte uitkomst:', rpcResult);
+      await supabase.auth.admin.deleteUser(authUserId);
+      return NextResponse.json(
+        { error: 'Kon rijschool niet aanmaken. Probeer het opnieuw.' },
         { status: 500 },
       );
     }
 
-    // 5. Insert instructor license (30-day trial)
-    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { error: licenseError } = await supabase
-      .from('instructor_licenses')
-      .insert({
-        instructor_id: instructor.id,
-        school_id: school.id,
-        status: 'active',
-        billing_plan: 'trial',
-        is_trial: true,
-        trial_ends_at: trialEndsAt,
-        max_active_students: 9999,
-        price_per_month: 0,
-      });
+    const school = { id: schoolId };
+    const instructor = { id: instructorId };
+    registrationCommitted = true;
 
-    if (licenseError) {
-      console.error('License insert error:', licenseError);
-      // Non-fatal: continue anyway, license can be added manually
-    }
+    // ── Vanaf hier: uitsluitend side-effects NÁ een geslaagde commit ───────
+    // De school bestaat nu gegarandeerd. Alles hieronder is aanvullend en mag
+    // de registratie niet meer ongedaan maken.
 
     // 5b. Log legal acceptances (append-only audit log)
     await recordLegalAcceptances(
@@ -454,7 +501,19 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Registration error:', error);
 
-    // Attempt cleanup if auth user was created
+    if (registrationCommitted) {
+      // De school + eigenaar + trial staan er al (RPC gecommit). Een fout in
+      // een side-effect (mail, audit, invite) mag die registratie niet
+      // ongedaan maken — en het account zeker niet verwijderen. De gebruiker
+      // is geregistreerd; we melden succes en loggen het probleem.
+      console.error(
+        '[register-school] side-effect faalde NA een geslaagde registratie — account blijft bestaan',
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    // Nog niets gecommit: de RPC-transactie is (indien aangeroepen) volledig
+    // teruggerold, dus alleen de auth-user kan resteren.
     if (authUserId) {
       try {
         await supabase.auth.admin.deleteUser(authUserId);
