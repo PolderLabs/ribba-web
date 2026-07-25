@@ -45,15 +45,31 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
+    // Toegang ÉN bevoegdheid: admin-niveau (owner óf admin).
+    //
+    // Tot 25 jul volstond hier "actieve instructeur van deze rijschool",
+    // waardoor élke medewerker het abonnement van de rijschool kon afsluiten.
+    // Eigenaar-only is het eindmodel (fase 2 van het schoollicentie-epic),
+    // maar kan pas nadat de owner-backfill is gedraaid — vandaag heeft 2 van
+    // de 9 rijscholen een school_role='owner', dus owner-only nú zou zeven
+    // rijscholen buitensluiten van hun eigen abonnement.
+    // Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md in ribbaPro.
     const { data: instructor } = await getSupabase()
       .from('instructors')
       .select('id')
       .eq('user_id', user.id)
       .eq('drivingschool_id', school_id)
       .eq('status', 'active')
+      .in('school_role', ['owner', 'admin'])
       .maybeSingle();
     if (!instructor) {
-      return NextResponse.json({ error: 'Geen toegang tot deze rijschool.' }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: 'Alleen de eigenaar of een beheerder van deze rijschool kan het abonnement beheren.',
+          reason: 'subscription_management_forbidden',
+        },
+        { status: 403 },
+      );
     }
 
     // Prijzen zijn excl. 21% btw; Mollie incasseert het bruto bedrag (SSoT).
