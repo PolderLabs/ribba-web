@@ -36,7 +36,7 @@ mock.module('@/lib/billing-events', {
 const { POST } = await import('../app/api/checkout/route.ts');
 
 const SCHOOL = '0218195e-0000-0000-0000-000000000000';
-const CHAIN = ['select', 'update', 'eq', 'or', 'single', 'limit', 'order', 'maybeSingle', 'is', 'not', 'lt', 'gte', 'upsert'];
+const CHAIN = ['select', 'update', 'eq', 'in', 'or', 'single', 'limit', 'order', 'maybeSingle', 'is', 'not', 'lt', 'gte', 'upsert'];
 
 function makeClient(responses) {
   let i = 0;
