@@ -40,15 +40,29 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
+    // Toegang ÉN bevoegdheid: admin-niveau (owner óf admin).
+    //
+    // Tot 25 jul volstond hier "actieve instructeur van deze rijschool",
+    // waardoor élke medewerker het abonnement van de rijschool kon OPZEGGEN.
+    // Eigenaar-only volgt in fase 2, na de owner-backfill (vandaag heeft 2
+    // van de 9 rijscholen een eigenaar).
+    // Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md in ribbaPro.
     const { data: instructor } = await supabase
       .from('instructors')
       .select('id')
       .eq('user_id', user.id)
       .eq('drivingschool_id', school_id)
       .eq('status', 'active')
+      .in('school_role', ['owner', 'admin'])
       .maybeSingle();
     if (!instructor) {
-      return NextResponse.json({ error: 'Geen toegang tot deze rijschool.' }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: 'Alleen de eigenaar of een beheerder van deze rijschool kan het abonnement opzeggen.',
+          reason: 'subscription_management_forbidden',
+        },
+        { status: 403 },
+      );
     }
 
     // Provider-bepaling op de ACTUELE actieve Stripe-status (niet "ooit een rij").

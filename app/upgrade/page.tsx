@@ -70,6 +70,11 @@ function UpgradeContent() {
   const [activeStudents, setActiveStudents] = useState<number | null>(null);
   const [activeInstructors, setActiveInstructors] = useState<number | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  // Mag deze gebruiker het abonnement beheren? Komt uit /api/current-plan
+  // (owner of admin; fase 0 van het schoollicentie-epic — wordt owner-only in
+  // fase 2). Default true zodat er tijdens het laden niets knippert; de server
+  // is en blijft de poort.
+  const [canManageSubscription, setCanManageSubscription] = useState(true);
 
   // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
@@ -134,6 +139,9 @@ function UpgradeContent() {
         setTrialEndsAt(body.trialEndsAt || null);
         setCancelledAt(body.cancelledAt || null);
         setPeriodEnd(body.periodEnd || null);
+        // Ontbreekt het veld (oudere API-versie), dan niets afschermen — de
+        // server weigert alsnog. Alleen een expliciete false blokkeert de UI.
+        setCanManageSubscription(body.canManageSubscription !== false);
 
         if (usageRes.ok) {
           const usage = await usageRes.json();
@@ -279,6 +287,10 @@ function UpgradeContent() {
   };
 
   const canUpgradeTo = (plan: string) => {
+    // Medewerkers zien het abonnement wél, maar kunnen het niet wijzigen —
+    // de server weigert dat sinds fase 0 met 403. Knoppen tonen die
+    // gegarandeerd falen is misleidend, dus die verbergen we hier.
+    if (!canManageSubscription) return false;
     if (isTrial) return true;
     if (!currentPlan) return true;
     if (plan === 'premium' && currentPlan === 'basic') return true;
@@ -379,6 +391,30 @@ function UpgradeContent() {
         {planLoading && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
             <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3 }} />
+          </div>
+        )}
+
+        {/* Medewerkers zien het abonnement, maar beheren het niet. Zonder deze
+            uitleg zou de pagina er simpelweg "kapot" uitzien (geen knoppen). */}
+        {!planLoading && !canManageSubscription && (
+          <div
+            style={{
+              maxWidth: 780,
+              margin: '0 auto 32px',
+              padding: '16px 20px',
+              background: '#FEF3C7',
+              border: '1px solid #FDE68A',
+              borderRadius: 14,
+              color: '#78350F',
+              fontSize: 14,
+              lineHeight: 1.5,
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: 4 }}>
+              Alleen de eigenaar beheert het abonnement
+            </strong>
+            Je ziet hier wat je rijschool afneemt, maar je kunt het abonnement niet
+            wijzigen of opzeggen. Neem contact op met de eigenaar van de rijschool.
           </div>
         )}
 
@@ -542,8 +578,8 @@ function UpgradeContent() {
         </>
         )}
 
-        {/* Cancel subscription */}
-        {!planLoading && currentPlan && !isTrial && !cancelledAt && !cancelSuccess && (
+        {/* Cancel subscription — alleen voor wie het abonnement mag beheren */}
+        {!planLoading && canManageSubscription && currentPlan && !isTrial && !cancelledAt && !cancelSuccess && (
           <div style={{ textAlign: 'center', marginTop: 32 }}>
             <button
               onClick={handleCancel}
