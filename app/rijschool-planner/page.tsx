@@ -210,6 +210,7 @@ export default function RijschoolPlannerPage() {
             Privacy
           </a>
         </p>
+        <p style={{ marginTop: 8 }}>Ribba B.V. · KvK 42114132</p>
       </footer>
     </main>
   );

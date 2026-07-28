@@ -488,6 +488,9 @@ export default function ProPage() {
           {' · '}
           <a href="https://ribba.app/privacybeleid" style={{ color: '#A8A29E', textDecoration: 'none' }}>Privacybeleid</a>
         </p>
+        <p className="footer-text" style={{ marginTop: 8, color: '#A8A29E' }}>
+          Ribba B.V. · KvK 42114132
+        </p>
       </footer>
     </div>
   );
