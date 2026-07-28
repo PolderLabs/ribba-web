@@ -737,6 +737,17 @@ a.text-link:hover {
   text-decoration: underline;
 }
 
+.chat-legal-note {
+  margin-top: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #78716C;
+}
+
+.chat-legal-note a {
+  color: #2563EB;
+}
+
 .chat-shell {
   display: flex;
   flex-direction: column;

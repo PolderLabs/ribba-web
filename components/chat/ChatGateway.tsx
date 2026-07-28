@@ -150,6 +150,21 @@ export default function ChatGateway({ token }: { token: string }) {
     setOtpKey((k) => k + 1);
   }
 
+  // Web-acceptatie: leg de privacy-acceptatie mét IP + user-agent vast op het
+  // moment dat de bezoeker via OTP verifieert (append-only, non-blocking).
+  async function recordAcceptance() {
+    try {
+      const { data: { session } } = await getSupabase().auth.getSession();
+      if (!session) return;
+      await fetch('/api/chat/record-acceptance', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    } catch {
+      // legal-logging mag de chat-entry nooit blokkeren
+    }
+  }
+
   if (phase === 'resolving' || phase === 'claiming') {
     return (
       <div className="chat-page">
@@ -200,8 +215,13 @@ export default function ChatGateway({ token }: { token: string }) {
           <OtpGate
             key={otpKey}
             supabase={getSupabase()}
-            onVerified={() => { void claim(info); }}
+            onVerified={() => { void recordAcceptance(); void claim(info); }}
           />
+          <p className="chat-legal-note">
+            Door je e-mailadres te verifiëren ga je akkoord met de verwerking van je
+            gegevens zoals beschreven in de{' '}
+            <a href="https://ribba.app/privacybeleid" target="_blank" rel="noopener noreferrer">privacyverklaring</a>.
+          </p>
         </div>
       </div>
     );
