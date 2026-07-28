@@ -28,6 +28,10 @@ export default function MijnRibbaPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fase 2a: het portaal geeft toegang tot betaalmethode en facturatie en is
+  // daarmee eigenaar-only. Default true zodat er tijdens het laden niets
+  // knippert; de edge function is en blijft de poort (403 voor niet-eigenaren).
+  const [canManageSubscription, setCanManageSubscription] = useState(true);
   // Synchrone request-level dubbelklikblokkade (correctieronde 21 jul):
   // portalBusy/disabled is UI-bescherming, maar twee click-events kunnen
   // dezelfde render-state zien; deze ref-gate niet.
@@ -49,6 +53,18 @@ export default function MijnRibbaPage() {
           const me = await meRes.json();
           if (me.school_id) setSchoolId(me.school_id);
           if (me.school_name) setSchoolName(me.school_name);
+          if (me.school_id) {
+            // Bevoegdheid komt uit dezelfde bron als /upgrade gebruikt.
+            // Ontbreekt het veld (oudere API-versie), dan schermen we niets
+            // af — de server weigert alsnog.
+            const planRes = await fetch(`/api/current-plan?school_id=${me.school_id}`, {
+              headers: { Authorization: `Bearer ${data.session.access_token}` },
+            });
+            if (planRes.ok) {
+              const body = await planRes.json();
+              setCanManageSubscription(body.canManageSubscription !== false);
+            }
+          }
         }
       } catch {
         // foutafhandeling hieronder via ontbrekende schoolId
@@ -110,17 +126,34 @@ export default function MijnRibbaPage() {
 
             {error && <div className="checkout-error">{error}</div>}
 
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={openPortal}
-              disabled={!schoolId || portalBusy}
-            >
-              {portalBusy ? 'Bezig…' : 'Abonnement & facturatie beheren'}
-            </button>
-            <p className="footer-text" style={{ marginTop: 12 }}>
-              Facturen downloaden, betaalmethode wijzigen of opzeggen — veilig via Stripe.
-            </p>
+            {canManageSubscription ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={openPortal}
+                  disabled={!schoolId || portalBusy}
+                >
+                  {portalBusy ? 'Bezig…' : 'Abonnement & facturatie beheren'}
+                </button>
+                <p className="footer-text" style={{ marginTop: 12 }}>
+                  Facturen downloaden, betaalmethode wijzigen of opzeggen — veilig via Stripe.
+                </p>
+              </>
+            ) : (
+              /* Fase 2a: beheerders zien wél hun abonnement, maar wijzigen het
+                 niet. Zonder deze uitleg zou de pagina er simpelweg leeg
+                 uitzien. Geen omweg naar checkout of naar Ribba: de eigenaar
+                 beheert het abonnement. */
+              <div className="checkout-error" style={{ background: '#FEF3C7', borderColor: '#FDE68A', color: '#78350F' }}>
+                <strong style={{ display: 'block', marginBottom: 4 }}>
+                  Alleen de eigenaar beheert het abonnement
+                </strong>
+                Je ziet hier wat je rijschool afneemt, maar je kunt het abonnement,
+                de betaalmethode en de facturatie niet wijzigen. Vraag de eigenaar
+                van de rijschool om dit te doen.
+              </div>
+            )}
 
             <div className="divider" />
 

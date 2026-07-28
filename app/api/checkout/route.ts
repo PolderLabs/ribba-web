@@ -45,14 +45,14 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
-    // Toegang ÉN bevoegdheid: admin-niveau (owner óf admin).
+    // Toegang ÉN bevoegdheid: EIGENAAR-ONLY (fase 2a, productbesluit 27 jul).
     //
-    // Tot 25 jul volstond hier "actieve instructeur van deze rijschool",
-    // waardoor élke medewerker het abonnement van de rijschool kon afsluiten.
-    // Eigenaar-only is het eindmodel (fase 2 van het schoollicentie-epic),
-    // maar kan pas nadat de owner-backfill is gedraaid — vandaag heeft 2 van
-    // de 9 rijscholen een school_role='owner', dus owner-only nú zou zeven
-    // rijscholen buitensluiten van hun eigen abonnement.
+    // Een abonnement is een juridische en financiële verplichting van de
+    // ondernemíng; de eigenaar vertegenwoordigt die. Een admin bestuurt de
+    // dagelijkse operatie en mag de abonnementsinformatie zien, maar hem niet
+    // wijzigen. Historie: tot 25 jul volstond "actieve instructeur", fase 0
+    // versmalde naar owner|admin omdat zeven rijscholen nog geen eigenaar
+    // hadden; migratie B (28 jul) gaf elke school er een.
     // Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md in ribbaPro.
     const { data: instructor } = await getSupabase()
       .from('instructors')
@@ -60,12 +60,12 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('drivingschool_id', school_id)
       .eq('status', 'active')
-      .in('school_role', ['owner', 'admin'])
+      .eq('school_role', 'owner')
       .maybeSingle();
     if (!instructor) {
       return NextResponse.json(
         {
-          error: 'Alleen de eigenaar of een beheerder van deze rijschool kan het abonnement beheren.',
+          error: 'Alleen de eigenaar van deze rijschool kan het abonnement beheren.',
           reason: 'subscription_management_forbidden',
         },
         { status: 403 },

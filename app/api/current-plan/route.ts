@@ -49,10 +49,12 @@ export async function GET(req: NextRequest) {
     }
 
     const schoolRole = (instructor as { school_role?: string | null }).school_role ?? null;
-    // Admin-niveau = owner óf admin (fase 0; wordt owner-only in fase 2, na de
-    // owner-backfill). Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md
-    // in ribbaPro.
-    const canManageSubscription = schoolRole === 'owner' || schoolRole === 'admin';
+    // EIGENAAR-ONLY sinds fase 2a (productbesluit 27 jul). Dit veld stuurt de
+    // UI aan; de schrijfroutes dwingen dezelfde regel zelf af. Informatie over
+    // het abonnement blijft voor iedereen met toegang zichtbaar — alleen het
+    // wijzigen is voorbehouden aan de eigenaar.
+    // Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md in ribbaPro.
+    const canManageSubscription = schoolRole === 'owner';
 
     // Alle actieve licentierijen van de school + deterministische reductie.
     // Was `.single()`: bij een school met twee instructeurs (= twee rijen)

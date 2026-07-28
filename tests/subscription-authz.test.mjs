@@ -9,7 +9,7 @@
 // Wat deze tests vastleggen:
 //
 //   1. FILTERBEWIJS. De autorisatiequery filtert op user_id + drivingschool_id
-//      + status='active' + school_role in ('owner','admin'). Dat is de kern:
+//      + status='active' + school_role = 'owner'. Dat is de kern:
 //      juist die vier filters maken dat álle drie de weigergevallen (employee,
 //      geen schoolkoppeling, verkeerde school) per constructie geen rij
 //      opleveren. Zonder deze assertie zou een 403 in de tests hieronder ook
@@ -117,7 +117,9 @@ function reset() {
 /** Geen rij: exact wat de DB teruggeeft bij employee, geen koppeling én verkeerde school. */
 const NO_ROW = { data: null, error: null };
 const IS_OWNER = { data: { id: 'ins-owner' }, error: null };
-const IS_ADMIN = { data: { id: 'ins-admin' }, error: null };
+// Sinds fase 2a levert een admin per query-contract GEEN rij meer op (de
+// query filtert op school_role='owner'); vandaar dat er geen IS_ADMIN-fixture
+// meer bestaat — een admin valt onder NO_ROW, net als een employee.
 
 /** Vind de ops van de eerste instructors-query (= de autorisatiecheck). */
 function authzOps(client) {
@@ -137,8 +139,10 @@ function assertAuthzFilters(client) {
     'moet op de GEVRAAGDE school filteren — anders werkt een rol bij school A ook op school B');
   assert.deepEqual(eqs.find(([c]) => c === 'status'), ['status', 'active'],
     'moet op een ACTIEVE instructeursrij filteren');
-  assert.deepEqual(ins.find(([c]) => c === 'school_role'), ['school_role', ['owner', 'admin']],
-    'moet op admin-niveau filteren — dit is de hele fase-0-wijziging');
+  assert.deepEqual(eqs.find(([c]) => c === 'school_role'), ['school_role', 'owner'],
+    'moet op EIGENAAR filteren — dit is de hele fase-2a-wijziging');
+  assert.equal(ins.find(([c]) => c === 'school_role'), undefined,
+    'geen owner|admin-lijst meer: admin mag het abonnement niet beheren');
 }
 
 // ── /api/checkout ──────────────────────────────────────────────────────
@@ -151,6 +155,7 @@ test('checkout — autorisatiequery filtert op gebruiker, school, actief én rol
 });
 
 for (const geval of [
+  'ADMIN van deze rijschool (fase 2a: mag niet meer)',
   'employee van deze rijschool',
   'gebruiker zonder enige schoolkoppeling',
   'gebruiker van een ANDERE rijschool',
@@ -172,7 +177,7 @@ for (const geval of [
   });
 }
 
-for (const [rol, rij] of [['owner', IS_OWNER], ['admin', IS_ADMIN]]) {
+for (const [rol, rij] of [['owner', IS_OWNER]]) {
   test(`checkout — ${rol} komt langs de rolcheck (bewezen met een onschadelijke fout erná)`, async () => {
     reset();
     // Bewust géén echte checkout: de school-lookup direct ná de rolcheck geeft
@@ -199,6 +204,7 @@ test('opzeggen — autorisatiequery filtert op gebruiker, school, actief én rol
 });
 
 for (const geval of [
+  'ADMIN van deze rijschool (fase 2a: mag niet meer)',
   'employee van deze rijschool',
   'gebruiker zonder enige schoolkoppeling',
   'gebruiker van een ANDERE rijschool',
@@ -217,7 +223,7 @@ for (const geval of [
   });
 }
 
-for (const [rol, rij] of [['owner', IS_OWNER], ['admin', IS_ADMIN]]) {
+for (const [rol, rij] of [['owner', IS_OWNER]]) {
   test(`opzeggen — ${rol} komt langs de rolcheck (bewezen met een onschadelijke fout erná)`, async () => {
     reset();
     // De providerlookup direct ná de rolcheck faalt bewust → de route stopt
