@@ -12,7 +12,7 @@ Ribba bestaat uit **twee losse producten** onder hetzelfde merk:
 | **Ribba** (vergelijkingssite) | Website waar consumenten rijscholen zoeken/vergelijken | Eindgebruikers (leerlingen) |
 | **Ribba Rijschool Planner** | SaaS software voor rijschoolbeheer (planning, leerlingen, facturatie) | Rijschool-eigenaren |
 
-Beide zijn van hetzelfde bedrijf (Ribba, KVK 85826898), maar het zijn **aparte diensten**.
+Beide zijn van hetzelfde bedrijf (Ribba, KVK 42114132), maar het zijn **aparte diensten**.
 
 ## Repo-overzicht
 
