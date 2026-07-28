@@ -152,7 +152,7 @@ export default function LoginPage() {
         </p>
         <p className="footer-text" style={{ textAlign: 'center', marginTop: 8 }}>
           Vragen? Neem contact op met{' '}
-          <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>
+          <a href="mailto:team@ribba.app">team@ribba.app</a>
         </p>
       </section>
     </main>

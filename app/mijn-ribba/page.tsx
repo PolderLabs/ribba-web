@@ -162,7 +162,7 @@ export default function MijnRibbaPage() {
 
             <p className="footer-text">
               Abonnement kiezen of wijzigen? <a href="/upgrade">Bekijk de plannen</a>.<br />
-              Vragen? <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>
+              Vragen? <a href="mailto:team@ribba.app">team@ribba.app</a>
             </p>
           </>
         )}

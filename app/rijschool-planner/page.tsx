@@ -198,8 +198,8 @@ export default function RijschoolPlannerPage() {
       >
         <p style={{ marginBottom: 8 }}>
           Vragen?{' '}
-          <a href="mailto:hallo@ribba.app" style={{ color: '#2563EB', fontWeight: 600 }}>
-            hallo@ribba.app
+          <a href="mailto:team@ribba.app" style={{ color: '#2563EB', fontWeight: 600 }}>
+            team@ribba.app
           </a>
         </p>
         <p>

@@ -479,8 +479,8 @@ export default function ProPage() {
         </div>
         <p className="footer-text">
           Vragen?{' '}
-          <a href="mailto:hallo@ribba.app" style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>
-            hallo@ribba.app
+          <a href="mailto:team@ribba.app" style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>
+            team@ribba.app
           </a>
         </p>
         <p className="footer-text" style={{ marginTop: 8 }}>

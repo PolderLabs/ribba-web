@@ -186,7 +186,7 @@ export default function ChatGateway({ token }: { token: string }) {
             {errorMsg ?? 'De chat-link is ongeldig of verlopen. Gebruik de meest recente link uit je e-mail.'}
           </p>
           <p className="chat-muted">
-            Kom je er niet uit? Mail ons op <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>.
+            Kom je er niet uit? Mail ons op <a href="mailto:team@ribba.app">team@ribba.app</a>.
           </p>
         </div>
       </div>

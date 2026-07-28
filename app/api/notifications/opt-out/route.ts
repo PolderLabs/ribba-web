@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('opt-out error:', error);
-    return page('Er ging iets mis', 'Probeer het later opnieuw of mail hallo@ribba.app.');
+    return page('Er ging iets mis', 'Probeer het later opnieuw of mail team@ribba.app.');
   }
 }
 
@@ -113,6 +113,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('opt-out error:', error);
-    return page('Er ging iets mis', 'Probeer het later opnieuw of mail hallo@ribba.app.');
+    return page('Er ging iets mis', 'Probeer het later opnieuw of mail team@ribba.app.');
   }
 }

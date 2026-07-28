@@ -131,7 +131,7 @@ function wrap(opts: WrapOpts): string {
       <!-- Footer -->
       <tr><td style="background:#F8FAFC;padding:18px 32px;margin-top:24px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
         Ribba · vragen?
-        <a href="mailto:hallo@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">hallo@ribba.app</a>
+        <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
       </td></tr>
 
     </table>
@@ -214,7 +214,7 @@ export async function sendRecurringPaymentFailedMail(
       <p style="margin:0 0 12px">Beste ${escapeHtml(schoolName)},</p>
       <p style="margin:0 0 12px">De automatische SEPA-incasso van je Ribba-abonnement is helaas niet gelukt (poging ${attempt} van 3). Vaak komt dit door onvoldoende saldo of een blokkade op de rekening.</p>
       <p style="margin:0 0 12px"><strong>Wat nu?</strong> We proberen het automatisch opnieuw. Zorg dat er voldoende saldo op je zakelijke rekening staat — anders wordt je abonnement na de derde mislukte poging opgeschort en verliezen je instructeurs toegang.</p>
-      <p style="margin:0">Vragen of klopt er iets niet? Mail ons even op <a href="mailto:hallo@ribba.app" style="color:#2563EB;font-weight:600">hallo@ribba.app</a>.</p>
+      <p style="margin:0">Vragen of klopt er iets niet? Mail ons even op <a href="mailto:team@ribba.app" style="color:#2563EB;font-weight:600">team@ribba.app</a>.</p>
     `,
   });
   await sendMail(schoolEmail, subject, html, { schoolId, emailType: 'recurring_payment_failed' });
@@ -234,7 +234,7 @@ export async function sendSubscriptionSuspendedMail(
     bodyHtml: `
       <p style="margin:0 0 12px">Beste ${escapeHtml(schoolName)},</p>
       <p style="margin:0 0 12px">Na drie mislukte SEPA-incassopogingen hebben we je Ribba-abonnement moeten opschorten. Je instructeurs hebben hierdoor geen toegang meer tot betaalde functies.</p>
-      <p style="margin:0">Wil je weer aan de slag? Activeer je abonnement opnieuw via de knop hieronder. Vragen? Mail <a href="mailto:hallo@ribba.app" style="color:#2563EB;font-weight:600">hallo@ribba.app</a>.</p>
+      <p style="margin:0">Wil je weer aan de slag? Activeer je abonnement opnieuw via de knop hieronder. Vragen? Mail <a href="mailto:team@ribba.app" style="color:#2563EB;font-weight:600">team@ribba.app</a>.</p>
     `,
     ctaLabel: 'Abonnement reactiveren',
     ctaHref: `${BASE_URL}/upgrade`,

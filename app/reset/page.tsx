@@ -162,7 +162,7 @@ export default function ResetPage() {
           <div className="divider" />
           <p className="footer-text">
             Vragen? Neem contact op met{' '}
-            <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>
+            <a href="mailto:team@ribba.app">team@ribba.app</a>
           </p>
         </section>
       </main>
@@ -274,7 +274,7 @@ export default function ResetPage() {
 
         <p className="footer-text">
           Vragen? Neem contact op met{' '}
-          <a href="mailto:hallo@ribba.app">hallo@ribba.app</a>
+          <a href="mailto:team@ribba.app">team@ribba.app</a>
         </p>
       </section>
     </main>

@@ -113,7 +113,7 @@ function wrap(opts: WrapOpts): string {
       <tr><td style="background:#F8FAFC;padding:18px 32px;margin-top:24px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
         ${opts.footerHtml || ''}
         Ribba · vragen?
-        <a href="mailto:hallo@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">hallo@ribba.app</a>
+        <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
       </td></tr>
 
     </table>
