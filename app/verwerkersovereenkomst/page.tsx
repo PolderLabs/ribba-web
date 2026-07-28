@@ -105,7 +105,7 @@ export default function VerwerkersovereenkomstPage() {
       </Link>
 
       <h1 style={styles.h1}>Verwerkersovereenkomst — Ribba Rijschool Planner</h1>
-      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.dpa} · Laatst bijgewerkt: april 2026</p>
+      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.dpa} · Laatst bijgewerkt: 28 juli 2026</p>
       <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
         Deze verwerkersovereenkomst geldt voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
       </div>
@@ -455,7 +455,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>E-mail:</strong> info@ribba.app
+          <strong>E-mail:</strong> team@ribba.app
         </li>
         <li style={styles.li}>
           <strong>Website:</strong> ribba.app
