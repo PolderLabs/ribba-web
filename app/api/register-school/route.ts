@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
       console.warn(
         `[register-school] hervatte registratie (claim bestond al) school=${existingClaim.school_id}`,
       );
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, school_id: existingClaim.school_id });
     }
 
     // 1. Create auth user as UNCONFIRMED + generate signup confirmation link.
@@ -497,7 +497,7 @@ export async function POST(request: NextRequest) {
       `,
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, school_id: schoolId });
   } catch (error) {
     console.error('Registration error:', error);
 

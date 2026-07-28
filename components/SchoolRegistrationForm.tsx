@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
 import { LEGAL_VERSIONS } from '@/lib/legal-versions';
+import { trackTrialSignup } from '@/lib/gtag';
 import {
   COUNTRY_PROFILES,
   ENABLED_COUNTRY_CODES,
@@ -229,6 +230,10 @@ export default function SchoolRegistrationForm() {
         throw new Error(data?.error || 'Er ging iets mis. Probeer het opnieuw.');
       }
 
+      const data = await res.json().catch(() => null);
+      // Google Ads trial-registratie-conversie: pas hier, ná een geslaagde
+      // account-aanmaak. school_id als transaction_id voor dedupe.
+      trackTrialSignup(data?.school_id ?? undefined);
       setSuccess(true);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Onbekende fout');
