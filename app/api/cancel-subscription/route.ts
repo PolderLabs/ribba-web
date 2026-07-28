@@ -40,12 +40,10 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Ongeldige sessie.' }, { status: 401 });
     }
-    // Toegang ÉN bevoegdheid: admin-niveau (owner óf admin).
-    //
-    // Tot 25 jul volstond hier "actieve instructeur van deze rijschool",
-    // waardoor élke medewerker het abonnement van de rijschool kon OPZEGGEN.
-    // Eigenaar-only volgt in fase 2, na de owner-backfill (vandaag heeft 2
-    // van de 9 rijscholen een eigenaar).
+    // Toegang ÉN bevoegdheid: EIGENAAR-ONLY (fase 2a, productbesluit 27 jul).
+    // Opzeggen beëindigt een verplichting van de ondernemíng; dat is geen
+    // dagelijkse bedrijfsvoering. Was owner|admin (fase 0), mogelijk gemaakt
+    // door migratie B (28 jul), die elke rijschool een eigenaar gaf.
     // Zie docs/design/schoollicentie-epic-canoniek-plan-2026-07-25.md in ribbaPro.
     const { data: instructor } = await supabase
       .from('instructors')
@@ -53,12 +51,12 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('drivingschool_id', school_id)
       .eq('status', 'active')
-      .in('school_role', ['owner', 'admin'])
+      .eq('school_role', 'owner')
       .maybeSingle();
     if (!instructor) {
       return NextResponse.json(
         {
-          error: 'Alleen de eigenaar of een beheerder van deze rijschool kan het abonnement opzeggen.',
+          error: 'Alleen de eigenaar van deze rijschool kan het abonnement opzeggen.',
           reason: 'subscription_management_forbidden',
         },
         { status: 403 },

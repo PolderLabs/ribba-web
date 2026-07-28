@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { createPortalGate, openStripePortal } from '@/lib/stripe-upgrade';
+import { canManageSubscriptionFrom } from '@/lib/subscription-access';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -28,6 +29,12 @@ export default function MijnRibbaPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fase 2a: het portaal geeft toegang tot betaalmethode en facturatie en is
+  // daarmee eigenaar-only. FAIL-CLOSED: start op false en alleen een expliciet
+  // `true` uit /api/current-plan geeft de knop vrij. Tijdens het laden dekt
+  // `loading` het scherm af, dus dit knippert niet. Een knop die verschijnt en
+  // dan 403 geeft, is precies de doodlopende weg die fase 2a wegneemt.
+  const [canManageSubscription, setCanManageSubscription] = useState(false);
   // Synchrone request-level dubbelklikblokkade (correctieronde 21 jul):
   // portalBusy/disabled is UI-bescherming, maar twee click-events kunnen
   // dezelfde render-state zien; deze ref-gate niet.
@@ -49,6 +56,18 @@ export default function MijnRibbaPage() {
           const me = await meRes.json();
           if (me.school_id) setSchoolId(me.school_id);
           if (me.school_name) setSchoolName(me.school_name);
+          if (me.school_id) {
+            // Bevoegdheid komt uit dezelfde bron als /upgrade gebruikt.
+            try {
+              const planRes = await fetch(`/api/current-plan?school_id=${me.school_id}`, {
+                headers: { Authorization: `Bearer ${data.session.access_token}` },
+              });
+              const body = planRes.ok ? await planRes.json().catch(() => null) : null;
+              setCanManageSubscription(canManageSubscriptionFrom(planRes.ok, body));
+            } catch {
+              // Netwerkfout: blijft false — geen beheeractie tonen.
+            }
+          }
         }
       } catch {
         // foutafhandeling hieronder via ontbrekende schoolId
@@ -110,17 +129,34 @@ export default function MijnRibbaPage() {
 
             {error && <div className="checkout-error">{error}</div>}
 
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={openPortal}
-              disabled={!schoolId || portalBusy}
-            >
-              {portalBusy ? 'Bezig…' : 'Abonnement & facturatie beheren'}
-            </button>
-            <p className="footer-text" style={{ marginTop: 12 }}>
-              Facturen downloaden, betaalmethode wijzigen of opzeggen — veilig via Stripe.
-            </p>
+            {canManageSubscription ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={openPortal}
+                  disabled={!schoolId || portalBusy}
+                >
+                  {portalBusy ? 'Bezig…' : 'Abonnement & facturatie beheren'}
+                </button>
+                <p className="footer-text" style={{ marginTop: 12 }}>
+                  Facturen downloaden, betaalmethode wijzigen of opzeggen — veilig via Stripe.
+                </p>
+              </>
+            ) : (
+              /* Fase 2a: beheerders zien wél hun abonnement, maar wijzigen het
+                 niet. Zonder deze uitleg zou de pagina er simpelweg leeg
+                 uitzien. Geen omweg naar checkout of naar Ribba: de eigenaar
+                 beheert het abonnement. */
+              <div className="checkout-error" style={{ background: '#FEF3C7', borderColor: '#FDE68A', color: '#78350F' }}>
+                <strong style={{ display: 'block', marginBottom: 4 }}>
+                  Alleen de eigenaar beheert het abonnement
+                </strong>
+                Je ziet hier wat je rijschool afneemt, maar je kunt het abonnement,
+                de betaalmethode en de facturatie niet wijzigen. Vraag de eigenaar
+                van de rijschool om dit te doen.
+              </div>
+            )}
 
             <div className="divider" />
 

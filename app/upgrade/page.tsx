@@ -11,6 +11,7 @@ import {
   startStripeCheckout,
   type UpgradePlan,
 } from '@/lib/stripe-upgrade';
+import { canManageSubscriptionFrom } from '@/lib/subscription-access';
 
 const basicPricing = getPlanPricing('basic');
 const premiumPricing = getPlanPricing('premium');
@@ -70,11 +71,11 @@ function UpgradeContent() {
   const [activeStudents, setActiveStudents] = useState<number | null>(null);
   const [activeInstructors, setActiveInstructors] = useState<number | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  // Mag deze gebruiker het abonnement beheren? Komt uit /api/current-plan
-  // (owner of admin; fase 0 van het schoollicentie-epic — wordt owner-only in
-  // fase 2). Default true zodat er tijdens het laden niets knippert; de server
-  // is en blijft de poort.
-  const [canManageSubscription, setCanManageSubscription] = useState(true);
+  // Mag deze gebruiker het abonnement beheren? Komt uit /api/current-plan.
+  // Fase 2a: eigenaar-only, en FAIL-CLOSED — start op false, alleen een
+  // expliciet `true` geeft de koop-/opzegacties vrij. `planLoading` dekt het
+  // laadmoment af, dus dit knippert niet.
+  const [canManageSubscription, setCanManageSubscription] = useState(false);
 
   // Auth + resolve school_id (from URL or via Supabase session)
   useEffect(() => {
@@ -133,15 +134,17 @@ function UpgradeContent() {
           router.replace('/login');
           return;
         }
-        const body = await planRes.json();
-        setCurrentPlan(body.plan);
+        // Fail-closed lezen: bij een non-OK of onparseerbaar antwoord gaan we
+        // verder met een leeg object, zodat elk veld op zijn veilige default
+        // valt (geen plan, geen beheerrechten).
+        const body = (planRes.ok ? await planRes.json().catch(() => null) : null) ?? {};
+        setCurrentPlan(body.plan ?? null);
         setIsTrial(body.isTrial || false);
         setTrialEndsAt(body.trialEndsAt || null);
         setCancelledAt(body.cancelledAt || null);
         setPeriodEnd(body.periodEnd || null);
-        // Ontbreekt het veld (oudere API-versie), dan niets afschermen — de
-        // server weigert alsnog. Alleen een expliciete false blokkeert de UI.
-        setCanManageSubscription(body.canManageSubscription !== false);
+        // Fail-closed: alleen een expliciet `true` geeft de acties vrij.
+        setCanManageSubscription(canManageSubscriptionFrom(planRes.ok, body));
 
         if (usageRes.ok) {
           const usage = await usageRes.json();
