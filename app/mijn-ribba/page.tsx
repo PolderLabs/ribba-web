@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { createPortalGate, openStripePortal } from '@/lib/stripe-upgrade';
+import { canManageSubscriptionFrom } from '@/lib/subscription-access';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -29,9 +30,11 @@ export default function MijnRibbaPage() {
   const [portalBusy, setPortalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Fase 2a: het portaal geeft toegang tot betaalmethode en facturatie en is
-  // daarmee eigenaar-only. Default true zodat er tijdens het laden niets
-  // knippert; de edge function is en blijft de poort (403 voor niet-eigenaren).
-  const [canManageSubscription, setCanManageSubscription] = useState(true);
+  // daarmee eigenaar-only. FAIL-CLOSED: start op false en alleen een expliciet
+  // `true` uit /api/current-plan geeft de knop vrij. Tijdens het laden dekt
+  // `loading` het scherm af, dus dit knippert niet. Een knop die verschijnt en
+  // dan 403 geeft, is precies de doodlopende weg die fase 2a wegneemt.
+  const [canManageSubscription, setCanManageSubscription] = useState(false);
   // Synchrone request-level dubbelklikblokkade (correctieronde 21 jul):
   // portalBusy/disabled is UI-bescherming, maar twee click-events kunnen
   // dezelfde render-state zien; deze ref-gate niet.
@@ -55,14 +58,14 @@ export default function MijnRibbaPage() {
           if (me.school_name) setSchoolName(me.school_name);
           if (me.school_id) {
             // Bevoegdheid komt uit dezelfde bron als /upgrade gebruikt.
-            // Ontbreekt het veld (oudere API-versie), dan schermen we niets
-            // af — de server weigert alsnog.
-            const planRes = await fetch(`/api/current-plan?school_id=${me.school_id}`, {
-              headers: { Authorization: `Bearer ${data.session.access_token}` },
-            });
-            if (planRes.ok) {
-              const body = await planRes.json();
-              setCanManageSubscription(body.canManageSubscription !== false);
+            try {
+              const planRes = await fetch(`/api/current-plan?school_id=${me.school_id}`, {
+                headers: { Authorization: `Bearer ${data.session.access_token}` },
+              });
+              const body = planRes.ok ? await planRes.json().catch(() => null) : null;
+              setCanManageSubscription(canManageSubscriptionFrom(planRes.ok, body));
+            } catch {
+              // Netwerkfout: blijft false — geen beheeractie tonen.
             }
           }
         }
