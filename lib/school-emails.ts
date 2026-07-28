@@ -130,7 +130,7 @@ function wrap(opts: WrapOpts): string {
 
       <!-- Footer -->
       <tr><td style="background:#F8FAFC;padding:18px 32px;margin-top:24px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
-        Ribba · vragen?
+        Ribba B.V. · vragen?
         <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
       </td></tr>
 

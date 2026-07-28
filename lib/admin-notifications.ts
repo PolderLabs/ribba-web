@@ -258,7 +258,7 @@ function buildHtml(type: AdminEventType, school: SchoolInfo, stats: Stats): stri
 
       <!-- Footer -->
       <tr><td style="background:#F8FAFC;padding:18px 32px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
-        Automatisch verzonden door Ribba ·
+        Automatisch verzonden door Ribba B.V. ·
         <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
       </td></tr>
 

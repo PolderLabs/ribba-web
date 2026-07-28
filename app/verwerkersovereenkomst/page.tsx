@@ -125,8 +125,8 @@ export default function VerwerkersovereenkomstPage() {
         medewerkers verwerkt.
       </p>
       <p style={styles.p}>
-        1.2. <strong>Verwerker</strong> (&quot;Ribba&quot;): Ribba, onderdeel
-        van Ribba (KVK: 42114132), die in opdracht van de Verwerkingsverantwoordelijke
+        1.2. <strong>Verwerker</strong> (&quot;Ribba&quot;): Ribba B.V.
+        (KVK: 42114132), die in opdracht van de Verwerkingsverantwoordelijke
         persoonsgegevens verwerkt ten behoeve van de Dienst.
       </p>
 
@@ -445,7 +445,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <p style={styles.p}>
         13.2. Geschillen worden voorgelegd aan de bevoegde rechter in het
-        arrondissement van de vestigingsplaats van Ribba (KVK: 42114132).
+        arrondissement van de vestigingsplaats van Ribba B.V. (KVK: 42114132).
       </p>
 
       {/* Artikel 14 */}
