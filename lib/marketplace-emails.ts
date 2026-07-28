@@ -3,8 +3,12 @@
 // lib/school-emails.ts, maar zonder logBillingEvent (dat vereist een
 // drivingschool-uuid; marketplace werkt met integer cbr_rijscholen-ids).
 
+import { DOMAIN } from './domains';
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
+// Alle links in marketplace-mails (chat-token /chat/{token}, deeplinks /i /r,
+// opt-out) horen op het chat-domein.
+const BASE_URL = DOMAIN.chat;
 const LOGO_URL = `${BASE_URL}/ribba-logo.png`;
 
 export function escapeHtml(s: string): string {

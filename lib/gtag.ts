@@ -1,7 +1,7 @@
 // Google Ads (AW-18341801400) conversietracking voor de trial-registratie op
-// link.ribba.app. De registratie-CTA van de ribba.app-campagne voltooit hier,
-// dus de conversie wordt in deze repo gemeten. Consent Mode v2 + cross-domain
-// linker worden in app/layout.tsx geladen (zelfde patroon als ribba.app).
+// mijn.ribba.app/registreren. De registratie-CTA van de ribba.app-campagne
+// voltooit daar, dus de conversie wordt in deze repo gemeten. Consent Mode v2 +
+// cross-domain linker (incl. mijn.ribba.app) worden in app/layout.tsx geladen.
 
 export const GADS_ID = process.env.NEXT_PUBLIC_GADS_ID || 'AW-18341801400';
 

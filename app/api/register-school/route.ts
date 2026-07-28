@@ -17,6 +17,7 @@ import {
 } from '@/lib/country-profile';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import { DOMAIN } from '@/lib/domains';
 import {
   recordLegalAcceptances,
   pickAcceptedVersions,
@@ -48,7 +49,7 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-const VERIFY_REDIRECT_URL = 'https://link.ribba.app/welkom';
+const VERIFY_REDIRECT_URL = `${DOMAIN.account}/welkom`;
 
 /**
  * Deterministische idempotentiesleutel voor create_school_with_owner.

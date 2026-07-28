@@ -6,6 +6,7 @@
 // Auth: Vercel Cron stuurt automatisch `Authorization: Bearer ${CRON_SECRET}`.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { DOMAIN } from '@/lib/domains';
 import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { sendAdminNotification } from '@/lib/admin-notifications';
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
 
   // Kandidaten: license is active, NIET in trial, heeft een Mollie customer,
   // maar geen subscription. >1u oud zodat we niet vechten met een normale

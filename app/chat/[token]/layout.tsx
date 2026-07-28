@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { getServiceClient } from '@/lib/marketplace-db';
+import { DOMAIN } from '@/lib/domains';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
+const BASE_URL = DOMAIN.chat;
 // App Store ID van de Ribba app (zelfde app als lib/app-links.ts).
 const APPLE_APP_ID = process.env.NEXT_PUBLIC_APPLE_APP_ID || '6757161459';
 

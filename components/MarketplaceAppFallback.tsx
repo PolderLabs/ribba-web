@@ -1,8 +1,8 @@
 // Browser-fallback voor de marketplace universal links van de ribbaPro-app
-// (link.ribba.app/i/{inquiry_id} en /r/{recipient_id}, ribbaPro#139). Met de
+// (chat.ribba.app/i/{inquiry_id} en /r/{recipient_id}, ribbaPro#139). Met de
 // app geïnstalleerd opent iOS/Android de app en komt de gebruiker hier nooit;
 // zonder app tonen we de download-CTA. De web-chat zelf leeft op
-// link.ribba.app/chat/{token} — die token-link staat als aparte knop in
+// chat.ribba.app/chat/{token} — die token-link staat als aparte knop in
 // dezelfde e-mail, niet in deze URL (een kale /i- of /r-id geeft bewust geen
 // chat-toegang; claimen vereist e-mail-match via de claim-RPC's).
 

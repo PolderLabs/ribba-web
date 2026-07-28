@@ -1,41 +1,40 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { APP_HOSTS, canonicalHostForPath } from '@/lib/domains';
 
-// Routes owned by the Rijschool Planner (this repo).
-// When accessed on the main domain (ribba.app), we redirect to link.ribba.app
-// to avoid conflicts with the comparison site that lives on ribba.app.
-const PLANNER_ROUTES = [
-  '/pro',
-  '/login',
-  '/upgrade',
-  '/registreren',
-  '/rijschool-planner',
-  '/verwerkersovereenkomst',
-  '/payment',
-  '/reset',
-  '/join',
-  '/chat',
-];
+// Drie domeinen, één app. Elke paginaroute heeft een canonieke host
+// (zie lib/domains.ts). Bezoek je een route op het verkeerde domein, dan
+// 308-redirecten we naar het juiste. API-routes, _next en .well-known worden
+// NIET geredirect (canonicalHostForPath geeft daar null) zodat same-origin
+// fetches, webhooks, cron en per-host AASA blijven werken.
+//
+// De vergelijkingssite draait op apex ribba.app (andere repo). Komt een
+// app-route toch op ribba.app binnen, dan sturen we die ook naar zijn
+// canonieke host.
 
-function isPlannerRoute(pathname: string): boolean {
-  return PLANNER_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+function normalizeHost(hostHeader: string): string {
+  return hostHeader.split(':')[0].toLowerCase();
 }
 
 export function middleware(request: NextRequest) {
-  const hostname = request.headers.get('host') || '';
+  const host = normalizeHost(request.headers.get('host') || '');
   const pathname = request.nextUrl.pathname;
-  const isAppSubdomain = hostname === 'link.ribba.app' || hostname.startsWith('link.ribba.app:');
-  const isMainDomain = hostname === 'ribba.app' || hostname.startsWith('ribba.app:');
 
-  // On ribba.app: redirect planner routes to link.ribba.app
-  if (isMainDomain && isPlannerRoute(pathname)) {
+  const canonical = canonicalHostForPath(pathname);
+  if (!canonical) return;
+
+  const isAppHost = APP_HOSTS.includes(host);
+  const isMainDomain = host === 'ribba.app' || host === 'www.ribba.app';
+
+  // Alleen redirecten als we op een van onze hosts zitten (of het apex-vangnet)
+  // én de host niet al canoniek is. Lokale dev (localhost) laten we met rust.
+  if ((isAppHost || isMainDomain) && host !== canonical) {
     const url = new URL(request.url);
-    url.hostname = 'link.ribba.app';
+    url.hostname = canonical;
+    url.port = '';
+    url.protocol = 'https:'; // canonieke domeinen zijn https-only
     return NextResponse.redirect(url, 308);
   }
-
-  // Root path on link.ribba.app is handled by app/page.tsx so we can inspect
-  // the URL hash (e.g. Supabase auth-reset tokens) before redirecting away.
 }
 
 export const config = {

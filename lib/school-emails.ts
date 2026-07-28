@@ -4,9 +4,11 @@
 
 import { logBillingEvent } from './billing-events';
 import { getPlanPricing, formatCentsForDisplay, type PlanPricing } from './plan-pricing';
+import { DOMAIN } from './domains';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://link.ribba.app';
+
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
 const LOGO_URL = `${BASE_URL}/ribba-logo.png`;
 
 interface MailLogMeta {

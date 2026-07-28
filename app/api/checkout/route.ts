@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { DOMAIN } from '@/lib/domains';
 import { createMollieClient, SequenceType } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create first payment (iDEAL) — this establishes the SEPA mandate
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
     const payment = await getMollie().payments.create({
       amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
       description: planDescription(pricing.plan),

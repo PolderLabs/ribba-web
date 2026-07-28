@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { DOMAIN } from '@/lib/domains';
 import { createHash } from 'crypto';
 import { createMollieClient } from '@mollie/api-client';
 import { createClient } from '@supabase/supabase-js';
@@ -271,7 +272,7 @@ export async function POST(request: NextRequest) {
         // moeten gebeuren. Een receipt met stage >= subscription_created kan
         // hierdoor NOOIT een tweede customerSubscriptions.create triggeren.
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://ribba.app';
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
           let periodEndIso: string | null = null;
           let createdThisRun = false;
           let ranLicenseUpdateThisRun = false;

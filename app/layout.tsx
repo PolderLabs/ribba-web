@@ -61,7 +61,7 @@ export default function RootLayout({
 gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});
 gtag('js',new Date());
 gtag('set','url_passthrough',true);
-gtag('set','linker',{domains:['ribba.app','link.ribba.app']});
+gtag('set','linker',{domains:['ribba.app','link.ribba.app','mijn.ribba.app','chat.ribba.app']});
 gtag('config','${GADS_ID}');`}
         </Script>
         <Script
