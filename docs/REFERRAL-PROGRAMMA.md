@@ -56,14 +56,25 @@ herverwerking na een crash kan nooit dubbel incasseren of dubbel uitbetalen.
 5. Disputes/refunds → ops-alert naar team@ribba.app; transfer-reversal is in
    v1 een handmatige actie in het Stripe-dashboard.
 
-## Env-variabelen
+## Env-variabelen & Stripe-configuratie
 
-`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (endpoint `/api/stripe-webhook`;
-events: `setup_intent.succeeded`, `setup_intent.setup_failed`,
-`payment_intent.succeeded`, `payment_intent.payment_failed`, `account.updated`,
-`charge.dispute.created`, `charge.refunded` — account.updated ook voor
-connected accounts), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`. Bestaand:
-`CRON_SECRET`, `RESEND_API_KEY`, Supabase-vars.
+- `STRIPE_SECRET_KEY` — restricted key (Ribba B.V., `acct_1TuHoqV05lmkpPlF`)
+  met write op Customers, PaymentIntents, SetupIntents, Transfers en
+  Connect → Accounts + Account Links.
+- Twee webhook-endpoints wijzen naar `https://mijn.ribba.app/api/stripe-webhook`
+  (elk met een eigen signing secret — de route verifieert tegen beide):
+  - **platform** (`STRIPE_WEBHOOK_SECRET`, `we_1TyhEGV05lmkpPlFAGGqYnwZ`):
+    `setup_intent.succeeded`, `setup_intent.setup_failed`,
+    `payment_intent.succeeded`, `payment_intent.payment_failed`,
+    `charge.dispute.created`, `charge.refunded`
+  - **Connect** (`STRIPE_WEBHOOK_SECRET_CONNECT`, `we_1TyhEGV05lmkpPlFLas5tJCr`):
+    `account.updated` van de Express-partneraccounts
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — voor het Payment Element.
+- Bestaand: `CRON_SECRET`, `RESEND_API_KEY`, Supabase-vars.
+
+Alle vier de Stripe-vars staan in Vercel (Production + Preview, 2026-07-29);
+de migratie is diezelfde dag op het gedeelde Supabase-project toegepast en in
+de migration-history vastgelegd.
 
 ## Bekende risico's (geaccepteerd)
 
