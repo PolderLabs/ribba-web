@@ -36,6 +36,8 @@ async function sendEmail(to: string, subject: string, html: string) {
     body: JSON.stringify({
       from: 'Ribba <noreply@ribba.app>',
       to,
+      // BCC het team zodat we studenten-aanvragen (inschrijvingen) kunnen meelezen.
+      bcc: 'team@ribba.app',
       subject,
       html,
     }),
