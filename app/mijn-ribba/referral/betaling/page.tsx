@@ -1,0 +1,219 @@
+'use client';
+
+// SEPA-machtiging voor het referral-programma van de rijschool. De Ribba-app
+// (ribbaPro) deep-linkt eigenaren hierheen; na een geslaagde machtiging kan
+// het programma met cash-rewards geactiveerd worden. Bestaat naast de
+// Mollie-abonnements-incasso: dit mandaat financiert uitsluitend bevestigde
+// referral-payouts (commissie + servicekosten).
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { createBrowserClient } from '@supabase/ssr';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import RibbaLogo from '@/app/components/RibbaLogo';
+
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
+
+let browserClient: SupabaseClient | null = null;
+function getSupabase(): SupabaseClient {
+  if (!browserClient) {
+    browserClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+  }
+  return browserClient;
+}
+
+function SetupForm({ onError }: { onError: (msg: string) => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setBusy(true);
+    const { error } = await stripe.confirmSetup({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/mijn-ribba/referral/betaling?setup=return`,
+      },
+    });
+    // Bij succes redirect Stripe; hier komen we alleen bij een fout.
+    if (error) {
+      onError(error.message ?? 'De machtiging kon niet worden afgerond.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement />
+      <div className="form-submit">
+        <button type="submit" className="btn-primary" disabled={busy || !stripe} style={{ marginTop: 20 }}>
+          {busy ? 'Bezig…' : 'Machtiging afgeven'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+type PageState =
+  | { phase: 'loading' }
+  | { phase: 'unauthenticated' }
+  | { phase: 'form'; clientSecret: string; schoolName: string }
+  | { phase: 'waiting' } // terug van Stripe, wacht op webhook
+  | { phase: 'active' }
+  | { phase: 'error'; message: string };
+
+export default function ReferralBetalingPage() {
+  const [state, setState] = useState<PageState>({ phase: 'loading' });
+  const sessionRef = useRef<Session | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const pollStatus = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    // Poll tot de webhook de mandaatstatus op 'active' heeft gezet (max ~30s).
+    for (let i = 0; i < 10; i++) {
+      const res = await fetch('/api/referral/school/setup-status', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.sepa_mandate_status === 'active') {
+        setState({ phase: 'active' });
+        return;
+      }
+      if (data?.sepa_mandate_status === 'failed') {
+        setState({ phase: 'error', message: 'De machtiging is niet gelukt. Probeer het opnieuw.' });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    setState({ phase: 'waiting' });
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await getSupabase().auth.getSession();
+      sessionRef.current = session;
+      if (!session) {
+        setState({ phase: 'unauthenticated' });
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('setup') === 'return') {
+        const redirectStatus = params.get('redirect_status');
+        window.history.replaceState(null, '', '/mijn-ribba/referral/betaling');
+        if (redirectStatus === 'succeeded' || redirectStatus === 'processing') {
+          setState({ phase: 'waiting' });
+          void pollStatus();
+          return;
+        }
+        setError('De machtiging is niet afgerond. Probeer het opnieuw.');
+      }
+
+      // Al actief? Dan geen formulier meer tonen.
+      const statusRes = await fetch('/api/referral/school/setup-status', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const status = await statusRes.json().catch(() => null);
+      if (status?.sepa_mandate_status === 'active') {
+        setState({ phase: 'active' });
+        return;
+      }
+
+      const res = await fetch('/api/referral/school/setup-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.client_secret) {
+        setState({ phase: 'error', message: data?.error ?? 'Er ging iets mis.' });
+        return;
+      }
+      setState({ phase: 'form', clientSecret: data.client_secret, schoolName: data.school_name });
+    })();
+  }, [pollStatus]);
+
+  return (
+    <main className="registration-page">
+      <section className="registration-card">
+        <div className="registration-brand">
+          <RibbaLogo height={36} />
+        </div>
+
+        <p className="registration-pill">Referral-programma</p>
+        <h1>SEPA-machtiging voor uitbetalingen</h1>
+
+        {state.phase === 'loading' && <p className="registration-description">Laden…</p>}
+
+        {state.phase === 'unauthenticated' && (
+          <p className="registration-description">
+            Log eerst in op je Ribba-account om de machtiging af te geven.{' '}
+            <Link href="/login" className="text-link">Naar inloggen</Link>
+          </p>
+        )}
+
+        {state.phase === 'error' && (
+          <div className="alert alert-error">{state.message}</div>
+        )}
+
+        {state.phase === 'active' && (
+          <div className="alert alert-success">
+            <strong>Machtiging actief ✓</strong>
+            <br />
+            Je kunt het referral-programma nu activeren in de Ribba-app. Bevestigde
+            uitbetalingen (commissie + servicekosten) worden voortaan automatisch
+            via SEPA geïncasseerd.
+          </div>
+        )}
+
+        {state.phase === 'waiting' && (
+          <div className="alert alert-info">
+            De machtiging wordt verwerkt… Dit kan een minuut duren. Je kunt deze
+            pagina later opnieuw openen om de status te controleren.
+          </div>
+        )}
+
+        {state.phase === 'form' && (
+          <>
+            <p className="registration-description">
+              Met deze eenmalige machtiging incasseert Ribba automatisch de door
+              jou <strong>bevestigde</strong> referral-uitbetalingen (commissie +
+              servicekosten) van <strong>{state.schoolName}</strong>. Je bevestigt
+              elke uitbetaling zelf in de Ribba-app; zonder jouw bevestiging wordt
+              er nooit geïncasseerd.
+            </p>
+            {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+            {stripePromise ? (
+              <Elements
+                stripe={stripePromise}
+                options={{ clientSecret: state.clientSecret, locale: 'nl' }}
+              >
+                <SetupForm onError={setError} />
+              </Elements>
+            ) : (
+              <div className="alert alert-error">Stripe is niet geconfigureerd.</div>
+            )}
+          </>
+        )}
+
+        <div className="divider" />
+        <p className="footer-text">
+          Vragen? Neem contact op met <a href="mailto:team@ribba.app">team@ribba.app</a>
+        </p>
+      </section>
+    </main>
+  );
+}

@@ -25,10 +25,11 @@ export const APP_HOSTS: readonly string[] = [HOST.chat, HOST.referral, HOST.acco
 
 // Chat/marketplace-entry routes → chat.ribba.app
 const CHAT_PREFIXES = ['/chat', '/i', '/r'];
-// Referral/invite-links → link.ribba.app  (/[slug] blijft bewust ongeclassificeerd:
-// een catch-all is in de middleware niet te onderscheiden van een typefout, dus
-// die dwingen we niet af — invite-links worden al mét link.ribba.app gegenereerd.)
-const REFERRAL_PREFIXES = ['/join'];
+// Referral/invite-links + partner-portal → link.ribba.app  (/[slug] blijft
+// bewust ongeclassificeerd: een catch-all is in de middleware niet te
+// onderscheiden van een typefout, dus die dwingen we niet af — invite-links
+// worden al mét link.ribba.app gegenereerd.)
+const REFERRAL_PREFIXES = ['/join', '/partner'];
 // Account/planner + de rest → mijn.ribba.app
 const ACCOUNT_PREFIXES = [
   '/login', '/upgrade', '/registreren', '/mijn-ribba', '/payment', '/reset',

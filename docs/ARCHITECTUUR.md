@@ -49,6 +49,20 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
     `/r/{recipient_id}` rijschool-kant). AASA bevat `/i/*` + `/r/*`; zonder app tonen die
     routes een download-fallback. Kale ids geven geen chat-toegang (claim vereist
     e-mail-match via de RPC's). Gebruik in mails/QR uitsluitend link.ribba.app-URLs.
+- **Referral-programma per rijschool** (branch `feat/referral-program`, zie
+  `docs/REFERRAL-PROGRAMMA.md` voor de volledige flow + het RPC-contract met ribbaPro):
+  - **Partner-portal** op `link.ribba.app/partner` — e-mail-OTP-login, enrollment via
+    `/partner/join/[slug]`, dashboard met referral-link, aanmeldingen en commissie
+  - **Attributie** — `/{slug}?ref=CODE` → cookie (30 dagen, last-touch) → `/api/register`
+    schrijft `referrals` (best-effort; `lib/referral-attribution.ts`)
+  - **Stripe Connect** — partners zijn Express-accounts (recipient agreement, Stripe-hosted
+    KYC); rijscholen geven een SEPA-machtiging af op `/mijn-ribba/referral/betaling`;
+    `/api/cron/referral-payouts` incasseert bevestigde payouts (commissie + Ribba-fee) en
+    `/api/stripe-webhook` maakt na settlement de transfer naar de partner
+  - `supabase/migrations/20260729000000_referral_program.sql` — tabellen + de RPC's die
+    ribbaPro aanroept (`referral_program_upsert/_get`, `referral_list_referrals/_payouts`,
+    `referral_mark_milestone`, `referral_confirm/_reject/_retry_payout`, `referral_void_referral`,
+    `referral_program_public`)
 - **Wachtwoord reset** (`/reset`)
 - **iCal proxy** (`/api/ical`)
 - **Legal pagina's voor de Rijschool Planner**:

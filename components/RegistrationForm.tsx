@@ -3,10 +3,12 @@
 import { useState, FormEvent } from 'react';
 import { isValidPostalCode, normalizePostalCode } from '@/lib/validation';
 import { isMinimumAge, isValidEmail, isValidInternationalPhone } from '@/utils/validation';
+import { readRefCookie } from '@/components/ReferralCapture';
 
 type Props = {
   schoolId: string;
   schoolName: string;
+  refCode?: string;
 };
 
 const LICENSE_TYPES = [
@@ -31,7 +33,7 @@ type FormData = {
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
 
-export default function RegistrationForm({ schoolId, schoolName }: Props) {
+export default function RegistrationForm({ schoolId, schoolName, refCode }: Props) {
   const [form, setForm] = useState<FormData>({
     first_name: '',
     last_name: '',
@@ -109,6 +111,8 @@ export default function RegistrationForm({ schoolId, schoolName }: Props) {
           ...form,
           postal_code: normalizePostalCode(form.postal_code),
           drivingschool_id: schoolId,
+          // Last-touch attributie: URL-param wint van de cookie (30 dagen).
+          ref_code: refCode ?? readRefCookie(),
         }),
       });
 
