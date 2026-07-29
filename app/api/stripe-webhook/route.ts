@@ -35,8 +35,15 @@ function getSupabase(): SupabaseClient {
 }
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) {
+  // Twee endpoints delen deze route: het platform-endpoint (setup_intent.*,
+  // payment_intent.*, charge.*) en het Connect-endpoint (account.updated van
+  // Express-partners). Elk Stripe-endpoint heeft zijn eigen signing secret,
+  // dus we verifiëren tegen beide.
+  const secrets = [
+    process.env.STRIPE_WEBHOOK_SECRET,
+    process.env.STRIPE_WEBHOOK_SECRET_CONNECT,
+  ].filter((s): s is string => Boolean(s));
+  if (secrets.length === 0) {
     console.error('stripe-webhook: STRIPE_WEBHOOK_SECRET niet gezet');
     return NextResponse.json({ error: 'Niet geconfigureerd.' }, { status: 500 });
   }
@@ -44,11 +51,17 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get('stripe-signature');
   const rawBody = await req.text();
 
-  let event: Stripe.Event;
-  try {
-    event = getStripe().webhooks.constructEvent(rawBody, signature ?? '', secret);
-  } catch (e) {
-    console.error('stripe-webhook: signature-verificatie mislukt', String(e).slice(0, 200));
+  let event: Stripe.Event | null = null;
+  for (const secret of secrets) {
+    try {
+      event = getStripe().webhooks.constructEvent(rawBody, signature ?? '', secret);
+      break;
+    } catch {
+      // volgende secret proberen
+    }
+  }
+  if (!event) {
+    console.error('stripe-webhook: signature-verificatie mislukt voor alle secrets');
     return NextResponse.json({ error: 'Ongeldige signature.' }, { status: 400 });
   }
 
