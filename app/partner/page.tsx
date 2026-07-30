@@ -159,6 +159,7 @@ export default function PartnerDashboardPage() {
             </p>
             <OtpGate
               supabase={getSupabase()}
+              verifyLabel="Verifieer en log in"
               onVerified={(s) => {
                 setSession(s);
                 void loadMe(s);

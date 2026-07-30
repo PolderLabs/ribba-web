@@ -10,9 +10,12 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js';
 interface OtpGateProps {
   supabase: SupabaseClient;
   onVerified: (session: Session) => void;
+  // Label van de verifieer-knop; default past bij de web-chat, andere
+  // contexten (partner-portal) geven hun eigen label mee.
+  verifyLabel?: string;
 }
 
-export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
+export default function OtpGate({ supabase, onVerified, verifyLabel = 'Verifieer en open chat' }: OtpGateProps) {
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -113,7 +116,7 @@ export default function OtpGate({ supabase, onVerified }: OtpGateProps) {
       </div>
       {error && <div className="alert-error" role="alert">{error}</div>}
       <button type="submit" className="btn-primary" disabled={busy || code.length !== 6}>
-        {busy ? 'Controleren…' : 'Verifieer en open chat'}
+        {busy ? 'Controleren…' : verifyLabel}
       </button>
       <button
         type="button"

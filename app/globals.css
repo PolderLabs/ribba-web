@@ -726,6 +726,9 @@ a.text-link:hover {
 }
 
 .chat-link-button {
+  /* block: opeenvolgende link-knoppen (opnieuw versturen / ander adres)
+     stapelen onder elkaar i.p.v. aan elkaar geplakt op één regel */
+  display: block;
   background: none;
   border: none;
   padding: 0;

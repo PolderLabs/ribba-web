@@ -79,11 +79,12 @@ export default async function PartnerJoinPage({ params }: Props) {
           <strong>{program.school_name}</strong>:
         </p>
 
-        <ul className="registration-description" style={{ paddingLeft: 20 }}>
+        <ul className="registration-description" style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }}>
           {program.rewards.map((r) => (
-            <li key={r.milestone}>
-              <strong>{rewardText(r)}</strong> zodra je aanmelding de milestone
-              &lsquo;{milestoneText(r.milestone)}&rsquo; haalt
+            <li key={r.milestone} style={{ marginBottom: 8 }}>
+              {/* Expliciete {' '}: Turbopack stript een kale spatie na een element */}
+              <strong>{rewardText(r)}</strong>{' '}
+              zodra je aanmelding de milestone &lsquo;{milestoneText(r.milestone)}&rsquo; haalt
             </li>
           ))}
         </ul>

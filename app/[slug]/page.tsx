@@ -5,7 +5,6 @@ import RibbaLogo from '../components/RibbaLogo';
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ ref?: string }>;
 };
 
 type School = {
@@ -53,9 +52,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function SchoolPage({ params, searchParams }: Props) {
+export default async function SchoolPage({ params }: Props) {
   const { slug } = await params;
-  const { ref } = await searchParams;
   const school = await getSchool(slug);
 
   if (!school || !school.registration_enabled) {
@@ -95,8 +93,8 @@ export default async function SchoolPage({ params, searchParams }: Props) {
           <strong>{school.name}</strong>. Je ontvangt een bevestiging per e-mail.
         </p>
 
-        <ReferralCapture code={ref} />
-        <RegistrationForm schoolId={school.id} schoolName={school.name} refCode={ref} />
+        <ReferralCapture />
+        <RegistrationForm schoolId={school.id} schoolName={school.name} />
 
         <div className="divider" />
 

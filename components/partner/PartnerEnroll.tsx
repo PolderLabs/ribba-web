@@ -118,6 +118,7 @@ export default function PartnerEnroll({ slug, schoolName }: Props) {
         </p>
         <OtpGate
           supabase={getSupabase()}
+          verifyLabel="Verifieer en doe mee"
           onVerified={(s) => {
             setSession(s);
             void enroll(s);
