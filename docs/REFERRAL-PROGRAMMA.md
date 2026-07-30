@@ -156,9 +156,61 @@ de migration-history vastgelegd.
 > ingelogde instructeur markeert. De overige mutatie-RPC's blijven bewust
 > authenticated-only.
 
-## Hand-off: ribba.app (vergelijkingssite)
+## Hand-off: ribba.app (marketingsite) — referral-programma uitlichten
 
-> Geen wijzigingen nodig: referral-attributie loopt volledig via de
+> **Wat er is gelanceerd.** Elke rijschool op Ribba kan een eigen
+> referral-programma draaien: leerlingen, vrienden en familie delen een
+> persoonlijke link en verdienen een door de rijschool ingestelde beloning
+> (geldbedrag of gratis les) voor elke leerling die zich via hen inschrijft.
+> Uitbetaling verloopt automatisch en veilig via Stripe. Er is **geen
+> technische integratie nodig** aan jullie kant — alles draait op
+> link.ribba.app en mijn.ribba.app; jullie werk is puur content + CTA-links.
+>
+> **⚠️ Launch-voorwaarde:** publiceer pas als de rijschoolhouder-kant in de
+> Ribba-app live is (ribbaPro PR #329). De web-kant is al volledig live, maar
+> zonder de app-kant kan een rijschool het programma nog niet zelf instellen.
+>
+> **Doelgroep 1 — rijscholen (primair, verkoopargument voor de Planner):**
+> "Laat je leerlingen je beste wervers zijn" — mond-tot-mond meetbaar en
+> beloonbaar. Volledige controle: rijschool bepaalt beloningen per mijlpaal
+> (*proefles gehad* / *eerste les betaald*) en **bevestigt elke uitbetaling
+> handmatig**; er wordt nooit geïncasseerd zonder akkoord. Vrijwel geen
+> administratie: partners melden zichzelf aan, attributie is automatisch, en
+> na bevestiging regelt Ribba incasso + uitbetaling; KYC doet Stripe. Betaalt
+> de school het abonnement al via SEPA, dan is de betaalinstelling één klik
+> (bestaande machtiging hergebruiken). Transparante kosten: **€ 2,50
+> servicekosten per uitbetaling** bovenop de commissie; gratis-les-beloningen
+> kosten niets extra — noem dit gewoon, verstop het niet.
+>
+> **Doelgroep 2 — leerlingen/partners (secundair):** "Ken je iemand die
+> rijles zoekt? Verdien er iets aan." Aanmelden kost alleen een e-mailadres
+> (geen wachtwoord, geen app); direct een persoonlijke link; dashboard met
+> aanmeldingen en commissie; uitbetaling op eigen rekening binnen enkele
+> werkdagen na bevestiging door de rijschool.
+>
+> **Correcte feiten & URLs (exact gebruiken):** partner-aanmelding
+> `https://link.ribba.app/partner/join/{slug}` (rijschool deelt zijn eigen
+> link); partner-dashboard `https://link.ribba.app/partner`; referral-link
+> `https://link.ribba.app/{slug}?ref=CODE`, telt tot 30 dagen na de laatste
+> klik; mijlpalen heten "proefles gehad" en "eerste les betaald"; uitbetaling
+> via Stripe/SEPA duurt **enkele werkdagen** na bevestiging (beloof geen
+> "direct").
+>
+> **Niet claimen:** vaste beloningsbedragen (bedragen verschillen per
+> rijschool — hooguit "bijvoorbeeld €25"), "gegarandeerde"/"passieve"
+> inkomsten (vereist echte inschrijving + mijlpaal + bevestiging), of fiscale
+> beloftes richting partners (belastingafdracht is aan de partner).
+>
+> **Plaatsing:** feature-blok op de rijschool-gerichte Planner-pagina's met
+> CTA naar de bestaande aanmeldflow; FAQ-items (kosten €2,50/uitbetaling, wie
+> kan partner worden: iedereen met e-mail, uitbetaling: na bevestiging binnen
+> enkele werkdagen); optioneel later een consumentgerichte uitlegpagina waar
+> rijscholen naar kunnen linken. Screenshots/flow live te bekijken via de
+> testschool (slug `rijschool010rijbewijs`).
+
+## Hand-off: ribba.app (vergelijkingssite) — techniek
+
+> Geen codewijzigingen nodig: referral-attributie loopt volledig via de
 > inschrijfpagina's op link.ribba.app (`/{slug}?ref=CODE`), niet via de
 > marketplace-aanvraag. Optioneel/later: willen we ooit marketplace-inquiries
 > attribueren, dan moet de aanvraag-POST een `ref_code` uit een cookie
