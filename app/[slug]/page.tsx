@@ -1,9 +1,11 @@
 import { Metadata } from 'next';
 import RegistrationForm from '@/components/RegistrationForm';
+import ReferralCapture from '@/components/ReferralCapture';
 import RibbaLogo from '../components/RibbaLogo';
 
 type Props = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ ref?: string }>;
 };
 
 type School = {
@@ -51,8 +53,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function SchoolPage({ params }: Props) {
+export default async function SchoolPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const { ref } = await searchParams;
   const school = await getSchool(slug);
 
   if (!school || !school.registration_enabled) {
@@ -92,7 +95,8 @@ export default async function SchoolPage({ params }: Props) {
           <strong>{school.name}</strong>. Je ontvangt een bevestiging per e-mail.
         </p>
 
-        <RegistrationForm schoolId={school.id} schoolName={school.name} />
+        <ReferralCapture code={ref} />
+        <RegistrationForm schoolId={school.id} schoolName={school.name} refCode={ref} />
 
         <div className="divider" />
 

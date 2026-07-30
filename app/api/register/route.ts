@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { isValidEmail, isValidInternationalPhone, isMinimumAge } from '@/utils/validation';
 import { isValidPostalCode } from '@/lib/validation';
+import { recordReferralAttribution } from '@/lib/referral-attribution';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       license_type,
       date_of_birth,
       drivingschool_id,
+      ref_code,
     } = body;
 
     // Server-side validation
@@ -145,6 +147,7 @@ export async function POST(request: NextRequest) {
       status: 'waitlist',
     };
 
+    let studentId: string;
     if (existingStudent) {
       const { error: updateError } = await supabase
         .from('students')
@@ -157,15 +160,34 @@ export async function POST(request: NextRequest) {
           { status: 500 },
         );
       }
+      studentId = existingStudent.id;
     } else {
-      const { error: insertError } = await supabase.from('students').insert(studentData);
-      if (insertError) {
+      const { data: insertedStudent, error: insertError } = await supabase
+        .from('students')
+        .insert(studentData)
+        .select('id')
+        .single();
+      if (insertError || !insertedStudent) {
         console.error('Insert error:', insertError);
         return NextResponse.json(
           { error: 'Er ging iets mis bij het opslaan. Probeer het opnieuw.' },
           { status: 500 },
         );
       }
+      studentId = insertedStudent.id;
+    }
+
+    // Referral-attributie (?ref=CODE / cookie). Best-effort: vangt intern
+    // alle fouten af en mag de registratie nooit laten falen.
+    if (ref_code) {
+      await recordReferralAttribution({
+        refCode: ref_code,
+        drivingschoolId: drivingschool_id,
+        schoolName: school.name,
+        studentId,
+        firstName: first_name.trim(),
+        email: email.trim().toLowerCase(),
+      });
     }
 
     // Send confirmation email to student
