@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { loadStripe } from '@stripe/stripe-js';
@@ -73,7 +74,10 @@ type PageState =
   | { phase: 'active' }
   | { phase: 'error'; message: string };
 
+const LOGIN_WITH_RETURN = `/login?returnTo=${encodeURIComponent('/mijn-ribba/referral/betaling')}`;
+
 export default function ReferralBetalingPage() {
+  const router = useRouter();
   const [state, setState] = useState<PageState>({ phase: 'loading' });
   const sessionRef = useRef<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +158,10 @@ export default function ReferralBetalingPage() {
       const { data: { session } } = await getSupabase().auth.getSession();
       sessionRef.current = session;
       if (!session) {
+        // Direct naar login mét bewaarde bestemming (issue #44) — de
+        // app-deep-link strandt anders na inloggen op de abonnement-pagina.
         setState({ phase: 'unauthenticated' });
+        router.replace(LOGIN_WITH_RETURN);
         return;
       }
 
@@ -187,7 +194,7 @@ export default function ReferralBetalingPage() {
 
       await startNewMandateFlow();
     })();
-  }, [pollStatus, startNewMandateFlow]);
+  }, [pollStatus, startNewMandateFlow, router]);
 
   return (
     <main className="registration-page">
@@ -204,7 +211,7 @@ export default function ReferralBetalingPage() {
         {state.phase === 'unauthenticated' && (
           <p className="registration-description">
             Log eerst in op je Ribba-account om de machtiging af te geven.{' '}
-            <Link href="/login" className="text-link">Naar inloggen</Link>
+            <Link href={LOGIN_WITH_RETURN} className="text-link">Naar inloggen</Link>
           </p>
         )}
 

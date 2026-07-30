@@ -12,7 +12,26 @@ function getSupabase() {
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
-async function redirectToUpgrade(accessToken: string, router: ReturnType<typeof useRouter>) {
+// returnTo uit de query (issue #44): alleen same-origin relatieve paden —
+// géén '//host', backslashes of schema's — anders open-redirect.
+function safeReturnTo(): string | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('returnTo');
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\') || raw.includes(':')) {
+    return null;
+  }
+  return raw;
+}
+
+async function redirectAfterLogin(accessToken: string, router: ReturnType<typeof useRouter>) {
+  // Bewaarde bestemming (bv. deep-link uit de app naar
+  // /mijn-ribba/referral/betaling) wint; de doelpagina doet zijn eigen
+  // auth-/rolchecks, dus de /api/me-check hier overslaan is veilig.
+  const returnTo = safeReturnTo();
+  if (returnTo) {
+    router.replace(returnTo);
+    return;
+  }
   const res = await fetch('/api/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -36,7 +55,7 @@ export default function LoginPage() {
     const supabase = getSupabase();
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        redirectToUpgrade(data.session.access_token, router).catch((err) => {
+        redirectAfterLogin(data.session.access_token, router).catch((err) => {
           setError(err.message || 'Er ging iets mis.');
           setChecking(false);
         });
@@ -69,7 +88,7 @@ export default function LoginPage() {
         return;
       }
 
-      await redirectToUpgrade(data.session.access_token, router);
+      await redirectAfterLogin(data.session.access_token, router);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Er ging iets mis. Probeer het opnieuw.');
       setLoading(false);
