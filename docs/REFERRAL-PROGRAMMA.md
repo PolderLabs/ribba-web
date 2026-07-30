@@ -128,7 +128,12 @@ de migration-history vastgelegd.
 >    planner.
 >
 > Auth: mutatie-RPC's eisen `instructors.school_role IN ('owner','admin')`,
-> lees-RPC's school-lidmaatschap, beide op `auth.uid()`.
+> lees-RPC's school-lidmaatschap, beide op `auth.uid()`. Uitzondering:
+> `referral_mark_milestone` mag óók onder **service role** worden aangeroepen
+> (migratie 20260729120000) — jullie webhook-/cron-paden die milestones
+> automatisch markeren werken dus direct, naast het app-pad waar een
+> ingelogde instructeur markeert. De overige mutatie-RPC's blijven bewust
+> authenticated-only.
 
 ## Hand-off: ribba.app (vergelijkingssite)
 
