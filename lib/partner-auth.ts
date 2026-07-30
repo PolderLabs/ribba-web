@@ -25,3 +25,22 @@ export async function getAuthedUser(
   if (error || !user) return null;
   return { user, supabase };
 }
+
+// School waarvoor deze user owner/admin is (optioneel beperkt tot een
+// specifieke school). null = geen school waarvoor de user dit mag.
+export async function getAdminSchoolId(
+  supabase: SupabaseClient,
+  userId: string,
+  requestedSchoolId?: string | null,
+): Promise<string | null> {
+  let query = supabase
+    .from('instructors')
+    .select('drivingschool_id')
+    .eq('user_id', userId)
+    .in('school_role', ['owner', 'admin']);
+  if (requestedSchoolId) {
+    query = query.eq('drivingschool_id', requestedSchoolId);
+  }
+  const { data } = await query;
+  return data?.[0]?.drivingschool_id ?? null;
+}

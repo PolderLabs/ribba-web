@@ -66,6 +66,8 @@ function SetupForm({ onError }: { onError: (msg: string) => void }) {
 type PageState =
   | { phase: 'loading' }
   | { phase: 'unauthenticated' }
+  // Bestaand abonnements-mandaat gevonden → één-klik-adoptie aanbieden
+  | { phase: 'offer'; last4: string | null }
   | { phase: 'form'; clientSecret: string; schoolName: string }
   | { phase: 'waiting' } // terug van Stripe, wacht op webhook
   | { phase: 'active' }
@@ -75,6 +77,55 @@ export default function ReferralBetalingPage() {
   const [state, setState] = useState<PageState>({ phase: 'loading' });
   const sessionRef = useRef<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [adoptBusy, setAdoptBusy] = useState(false);
+
+  // Nieuwe-machtiging-flow: SetupIntent ophalen en het Payment Element tonen.
+  const startNewMandateFlow = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    setState({ phase: 'loading' });
+    const res = await fetch('/api/referral/school/setup-intent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.client_secret) {
+      setState({ phase: 'error', message: data?.error ?? 'Er ging iets mis.' });
+      return;
+    }
+    setState({ phase: 'form', clientSecret: data.client_secret, schoolName: data.school_name });
+  }, []);
+
+  // Eén-klik-adoptie van het bestaande abonnements-mandaat.
+  const adoptMandate = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    setAdoptBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/referral/school/adopt-mandate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.sepa_mandate_status !== 'active') {
+        throw new Error(data?.error ?? 'Bevestigen mislukt. Probeer het opnieuw.');
+      }
+      setState({ phase: 'active' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Onbekende fout');
+    } finally {
+      setAdoptBusy(false);
+    }
+  }, []);
 
   const pollStatus = useCallback(async () => {
     const session = sessionRef.current;
@@ -119,32 +170,24 @@ export default function ReferralBetalingPage() {
         setError('De machtiging is niet afgerond. Probeer het opnieuw.');
       }
 
-      // Al actief? Dan geen formulier meer tonen.
-      const statusRes = await fetch('/api/referral/school/setup-status', {
+      // Al actief? Dan geen formulier meer tonen. Zo niet: is er een bestaand
+      // abonnements-mandaat om te adopteren, bied dan de één-klik-route aan.
+      const optionsRes = await fetch('/api/referral/school/mandate-options', {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      const status = await statusRes.json().catch(() => null);
-      if (status?.sepa_mandate_status === 'active') {
+      const options = await optionsRes.json().catch(() => null);
+      if (options?.sepa_mandate_status === 'active') {
         setState({ phase: 'active' });
         return;
       }
-
-      const res = await fetch('/api/referral/school/setup-intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.client_secret) {
-        setState({ phase: 'error', message: data?.error ?? 'Er ging iets mis.' });
+      if (options?.existing_mandate) {
+        setState({ phase: 'offer', last4: options.existing_mandate.last4 ?? null });
         return;
       }
-      setState({ phase: 'form', clientSecret: data.client_secret, schoolName: data.school_name });
+
+      await startNewMandateFlow();
     })();
-  }, [pollStatus]);
+  }, [pollStatus, startNewMandateFlow]);
 
   return (
     <main className="registration-page">
@@ -177,6 +220,44 @@ export default function ReferralBetalingPage() {
             uitbetalingen (commissie + servicekosten) worden voortaan automatisch
             via SEPA geïncasseerd.
           </div>
+        )}
+
+        {state.phase === 'offer' && (
+          <>
+            <p className="registration-description">
+              Je betaalt je Ribba-abonnement al via automatische SEPA-incasso
+              {state.last4 ? (
+                <> (rekening eindigend op <strong>{state.last4}</strong>)</>
+              ) : null}
+              . Je kunt diezelfde machtiging óók gebruiken voor
+              referral-uitbetalingen — dan hoef je geen tweede machtiging af te
+              geven.
+            </p>
+            <p className="registration-description">
+              Met je bevestiging incasseert Ribba voortaan de door jou{' '}
+              <strong>bevestigde</strong> referral-uitbetalingen (commissie +
+              servicekosten; het bedrag verschilt per uitbetaling) van deze
+              rekening. Je bevestigt elke uitbetaling zelf in de Ribba-app;
+              zonder jouw bevestiging wordt er nooit geïncasseerd.
+            </p>
+            {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={adoptBusy}
+              onClick={() => { void adoptMandate(); }}
+            >
+              {adoptBusy ? 'Bezig…' : 'Gebruik mijn bestaande incassomachtiging'}
+            </button>
+            <button
+              type="button"
+              className="chat-link-button"
+              disabled={adoptBusy}
+              onClick={() => { void startNewMandateFlow(); }}
+            >
+              Liever een aparte machtiging afgeven voor referrals
+            </button>
+          </>
         )}
 
         {state.phase === 'waiting' && (

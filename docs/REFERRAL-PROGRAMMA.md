@@ -39,6 +39,27 @@ Statustransities in code zijn altijd **gefencede conditionele updates**
 bezit de payout. Stripe-calls dragen idempotency-keys per payout, dus ook
 herverwerking na een crash kan nooit dubbel incasseren of dubbel uitbetalen.
 
+## SEPA-machtiging: bestaande abonnements-machtiging hergebruiken
+
+Alle scholen betalen hun Ribba-abonnement via Stripe; wie via SEPA-incasso
+betaalt heeft dus al een actief `sepa_debit`-mandaat op de billing-customer
+(`school_subscriptions.stripe_customer_id`). `/mijn-ribba/referral/betaling`
+biedt die scholen een **één-klik-adoptie** aan in plaats van een tweede
+mandaat-flow: één expliciete bevestigingsknop ("Gebruik mijn bestaande
+incassomachtiging") koppelt de billing-customer + payment method aan
+`referral_programs` en zet het mandaat op `active`
+(`POST /api/referral/school/adopt-mandate`). De bevestigingsklik is bewust
+behouden (ander doel + variabele bedragen); consent wordt vastgelegd op
+`sepa_mandate_adopted_at/_by` (migratie `20260730100000`) én in
+`billing_events` (`referral_mandate_adopted`).
+
+Resolutie-details (`lib/referral-billing-mandate.ts`): `school_id` is niet
+uniek in `school_subscriptions` (meerdere historische subscriptions) — de
+actieve subscription gaat voor, daarna nieuwste; en de tabel bevat een mix
+van live- en test-mode customer-ids, dus elke kandidaat wordt live geprobeerd
+en `resource_missing` wordt overgeslagen. Geen bruikbaar mandaat (kaart, of
+alleen test-mode) → de reguliere SetupIntent-flow.
+
 ## Geldstroom (separate charges and transfers)
 
 1. ribbaPro roept `referral_confirm_payout` aan → payout `confirmed`.
