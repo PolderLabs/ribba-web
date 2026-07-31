@@ -3,12 +3,18 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
+import { classifyResetUrl, RESET_LINK_ONBRUIKBAAR } from '../../lib/reset-link';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+// Eén client per pagina. Bij PKCE bewaart de client een code_verifier in
+// storage; met meerdere instanties is niet gegarandeerd dat dezelfde verifier
+// wordt gelezen bij het inwisselen van de code.
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
 function getSupabase() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  if (!_supabase) _supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return _supabase;
 }
 
 export default function ResetPage() {
@@ -20,43 +26,75 @@ export default function ResetPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    // Check if there's an access_token in the URL hash (from Supabase reset email)
+    // De resetlink kan in drie vormen binnenkomen. Tot 31 jul 2026 keek deze
+    // pagina alléén naar de hash-vormen, waardoor de PKCE-vorm — die
+    // createBrowserClient uit @supabase/ssr STANDAARD gebruikt — altijd
+    // doorviel naar het e-mailformulier. De gebruiker klikte dan op een
+    // geldige link en kreeg het scherm "vul je e-mailadres in", klikte
+    // nogmaals (token is eenmalig, dus nu écht ongeldig), en liep daarna
+    // tegen de rate limit aan. Dat is in de auth-logs terug te zien als
+    // 303 login → 403 "One-time token not found" → 429.
+    //
+    //   1. ?code=<uuid>        PKCE — de huidige vorm
+    //   2. #access_token=...   implicit — oudere links, blijft ondersteund
+    //   3. #error=...          Supabase weigerde de token
+    //
+    // Volgorde is bewust: eerst een bestaande sessie (de client kan de code
+    // al automatisch hebben ingewisseld), dan de expliciete vormen.
+    const supabase = getSupabase();
     const hash = window.location.hash;
-    if (hash && hash.includes('access_token')) {
-      // Clean the URL immediately — remove the tokens from the address bar
-      window.history.replaceState({}, '', '/reset');
 
-      const supabase = getSupabase();
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) {
-          setMode('set-password');
-        } else {
-          // Try to exchange the token
-          const params = new URLSearchParams(hash.substring(1));
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
-          if (accessToken && refreshToken) {
-            supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error }) => {
-              if (error) {
-                setMode('request');
-                setMessage({ type: 'error', text: 'De reset link is verlopen. Vraag een nieuwe aan.' });
-              } else {
-                setMode('set-password');
-              }
-            });
-          } else {
-            setMode('request');
-          }
-        }
+    const schoon = () => window.history.replaceState({}, '', '/reset');
+
+    const naarWachtwoord = () => {
+      schoon();
+      setMode('set-password');
+    };
+
+    const naarFout = (text: string) => {
+      schoon();
+      setMode('request');
+      setMessage({ type: 'error', text });
+    };
+
+    (async () => {
+      const { data: bestaand } = await supabase.auth.getSession();
+      const actie = classifyResetUrl({
+        search: window.location.search,
+        hash,
+        hasSession: Boolean(bestaand.session),
       });
-    } else if (hash && hash.includes('error=')) {
-      // Clean URL and show error
-      window.history.replaceState({}, '', '/reset');
-      setMode('request');
-      setMessage({ type: 'error', text: 'De reset link is verlopen of ongeldig. Vraag een nieuwe aan.' });
-    } else {
-      setMode('request');
-    }
+
+      switch (actie.kind) {
+        case 'set-password':
+          naarWachtwoord();
+          return;
+
+        case 'exchange-code': {
+          const { error } = await supabase.auth.exchangeCodeForSession(actie.code);
+          if (error) naarFout(RESET_LINK_ONBRUIKBAAR);
+          else naarWachtwoord();
+          return;
+        }
+
+        case 'set-session': {
+          const { error } = await supabase.auth.setSession({
+            access_token: actie.accessToken,
+            refresh_token: actie.refreshToken,
+          });
+          if (error) naarFout(RESET_LINK_ONBRUIKBAAR);
+          else naarWachtwoord();
+          return;
+        }
+
+        case 'error':
+          naarFout(RESET_LINK_ONBRUIKBAAR);
+          return;
+
+        default:
+          setMode('request');
+      }
+    })();
   }, []);
 
   async function handleRequestReset(e: FormEvent) {
