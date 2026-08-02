@@ -13,11 +13,10 @@ function getSupabase() {
 }
 
 type InviteInfo = {
-  id: string;
   invite_email: string;
   invite_status: 'pending' | 'accepted' | 'declined' | 'expired';
-  student: { first_name: string; last_name: string } | null;
-  school: { name: string } | null;
+  student_name: string;
+  school_name: string;
 };
 
 type Phase =
@@ -40,18 +39,22 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
   useEffect(() => {
     (async () => {
       const supabase = getSupabase();
-      // Lookup the invite via the public-readable token (pending invites only per RLS)
-      const { data, error } = await supabase
-        .from('parent_links')
-        .select('id, invite_email, invite_status, student:students(first_name,last_name), school:drivingschools(name)')
-        .eq('invite_token', token)
-        .maybeSingle();
+      // Via RPC get_parent_invite (ribbaPro migratie 20260802103000).
+      //
+      // Stond eerder als directe query op parent_links, die leunde op de
+      // policy parent_links_token_select: USING (invite_status = 'pending').
+      // Die had geen tokenvoorwaarde, dus iedereen met de publieke anon-sleutel
+      // kon ALLE openstaande uitnodigingen uitlezen — token, e-mail en
+      // student_id, over alle rijscholen heen. De policy is verwijderd; de RPC
+      // vereist het token en geeft alleen terug wat deze pagina toont.
+      const { data, error } = await supabase.rpc('get_parent_invite', { p_token: token });
 
-      if (error || !data) {
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row) {
         setPhase('invalid');
         return;
       }
-      const info: InviteInfo = data as any;
+      const info: InviteInfo = row as InviteInfo;
       setInvite(info);
       if (info.invite_status === 'accepted') {
         setPhase('already_accepted');
@@ -63,10 +66,8 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
     })();
   }, [token]);
 
-  const studentName = invite?.student
-    ? `${invite.student.first_name} ${invite.student.last_name}`
-    : 'de leerling';
-  const schoolName = invite?.school?.name ?? 'de rijschool';
+  const studentName = invite?.student_name || 'de leerling';
+  const schoolName = invite?.school_name || 'de rijschool';
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -115,18 +116,23 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
       return;
     }
 
-    // Mark invite as accepted + link parent_user_id
-    const { error: updateErr } = await supabase
-      .from('parent_links')
-      .update({
-        parent_user_id: userId,
-        invite_status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      })
-      .eq('id', invite.id);
+    // Via RPC accept_parent_invite (ribbaPro migratie 20260802103000).
+    //
+    // De directe update hieronder kon nooit slagen: de enige UPDATE-policy
+    // voor ouders is `parent_user_id = auth.uid()`, en bij een pending
+    // uitnodiging is dat veld nog NULL. RLS weigerde de update dus altijd —
+    // ook voor de rechtmatige ouder. De RPC is SECURITY DEFINER en verifieert
+    // serverside dat het e-mailadres overeenkomt met invite_email.
+    const { data: accepted, error: updateErr } = await supabase.rpc(
+      'accept_parent_invite',
+      { p_token: token },
+    );
 
-    if (updateErr) {
-      setErrorMsg('Account is aangemaakt maar koppeling mislukt: ' + updateErr.message);
+    if (updateErr || accepted !== true) {
+      setErrorMsg(
+        'Account is aangemaakt maar de koppeling is niet gelukt. '
+        + 'Log in met dit e-mailadres en open de uitnodigingslink opnieuw.',
+      );
       setPhase('pending');
       return;
     }
