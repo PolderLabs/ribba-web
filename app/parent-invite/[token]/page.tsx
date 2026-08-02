@@ -25,6 +25,7 @@ type Phase =
   | 'already_accepted'
   | 'pending'
   | 'submitting'
+  | 'confirm_email'
   | 'success';
 
 export default function ParentInvitePage({ params }: { params: Promise<{ token: string }> }) {
@@ -107,6 +108,17 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
         setPhase('pending');
         return;
       }
+
+      // Staat e-mailbevestiging aan in Supabase Auth, dan geeft signUp wél een
+      // user maar GEEN sessie. accept_parent_invite draait dan zonder
+      // ingelogde gebruiker: auth.uid() is NULL en de koppeling faalt. Dat is
+      // geen fout maar een tussenstap — zeg dat dan ook, in plaats van een
+      // rode foutmelding te tonen bij een geslaagde registratie.
+      if (!signUp.session) {
+        setPhase('confirm_email');
+        return;
+      }
+
       userId = signUp.user.id;
     }
 
@@ -129,6 +141,10 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
     );
 
     if (updateErr || accepted !== true) {
+      // Loggen zodat bij een melding van een ouder te zien is wélke oorzaak
+      // het was: netwerkfout, RLS-weigering of een e-mailadres dat niet
+      // overeenkomt. De gebruiker krijgt bewust alleen de algemene tekst.
+      console.error('accept_parent_invite mislukt', { updateErr, accepted });
       setErrorMsg(
         'Account is aangemaakt maar de koppeling is niet gelukt. '
         + 'Log in met dit e-mailadres en open de uitnodigingslink opnieuw.',
@@ -246,6 +262,21 @@ export default function ParentInvitePage({ params }: { params: Promise<{ token: 
 
         {phase === 'submitting' && (
           <p style={styles.statusText}>Account aanmaken & koppelen...</p>
+        )}
+
+        {phase === 'confirm_email' && (
+          <div style={styles.center}>
+            <div style={{ ...styles.iconCircle, background: '#dbeafe' }}>
+              <span style={{ fontSize: 32 }}>📬</span>
+            </div>
+            <h1 style={styles.title}>Bevestig je e-mailadres</h1>
+            <p style={styles.subtitle}>
+              Je account is aangemaakt. We hebben een bevestigingsmail gestuurd naar{' '}
+              <strong>{invite?.invite_email}</strong>. Klik op de link in die mail en
+              open daarna deze uitnodigingslink opnieuw om de koppeling met{' '}
+              {studentName} af te ronden.
+            </p>
+          </div>
         )}
 
         {phase === 'success' && (
