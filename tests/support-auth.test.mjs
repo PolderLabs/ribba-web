@@ -37,6 +37,7 @@ mock.module('next/server', {
 
 const { withSupportAccess, readAal } = await import('../lib/support-auth.ts');
 const { GET: schoolsGET } = await import('../app/api/support/schools/route.ts');
+const { GET: schoolGET } = await import('../app/api/support/schools/[id]/route.ts');
 
 const USER = { id: 'staff-1', email: 'support@ribba.app' };
 
@@ -296,6 +297,50 @@ test('?intern=1 toont ze wel, en dat staat in het logboek', async () => {
   assert.deepEqual(rpc.args, { p_include_internal: true });
   assert.equal(currentClient.logs[0].meta.intern, true,
     'achteraf moet te zien zijn wat er op het scherm stond');
+});
+
+// ── 7. Schooldetail ────────────────────────────────────────────────────
+//
+// "Welke klant heb je bekeken" is precies wat een toegangslogboek moet
+// vastleggen; zonder target_school_id is de logregel waardeloos.
+
+test('schooldetail legt vast wélke rijschool is bekeken', async () => {
+  currentClient = makeClient({
+    rpc: {
+      support_school_detail: { data: { school: { naam: 'Liamdrive' } }, error: null },
+      support_school_events: { data: [{ bron: 'cbr' }], error: null },
+    },
+  });
+
+  const res = await schoolGET(
+    req(`Bearer ${token('aal2')}`, 'https://mijn.ribba.app/api/support/schools/school-9'),
+    { params: Promise.resolve({ id: 'school-9' }) },
+  );
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.detail, { school: { naam: 'Liamdrive' } });
+  assert.deepEqual(res.body.events, [{ bron: 'cbr' }]);
+
+  const [log] = currentClient.logs;
+  assert.equal(log.action, 'school.detail');
+  assert.equal(log.target_school_id, 'school-9', 'zonder school is de logregel waardeloos');
+  assert.equal(log.level, 0);
+});
+
+test('schooldetail zonder tweede factor geeft niets prijs', async () => {
+  currentClient = makeClient({
+    rpc: { support_school_detail: { data: { school: { naam: 'Liamdrive' } }, error: null } },
+  });
+
+  const res = await schoolGET(
+    req(`Bearer ${token('aal1')}`, 'https://mijn.ribba.app/api/support/schools/school-9'),
+    { params: Promise.resolve({ id: 'school-9' }) },
+  );
+
+  assert.equal(res.status, 403);
+  assert.ok(!JSON.stringify(res.body).includes('Liamdrive'));
+  assert.equal(currentClient.rpcCalls.filter((c) => c.naam.startsWith('support_school')).length, 0,
+    'er mag niet eens een query naar de school gaan');
 });
 
 test('/api/support/schools zonder tweede factor geeft niets prijs', async () => {
