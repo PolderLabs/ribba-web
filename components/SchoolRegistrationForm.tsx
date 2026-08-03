@@ -5,6 +5,7 @@ import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
 import { LEGAL_VERSIONS } from '@/lib/legal-versions';
 import { trackTrialSignup } from '@/lib/gtag';
+import { readSignupAttribution } from '@/lib/signup-attribution';
 import {
   COUNTRY_PROFILES,
   ENABLED_COUNTRY_CODES,
@@ -222,6 +223,8 @@ export default function SchoolRegistrationForm() {
             privacy: LEGAL_VERSIONS.privacy,
             dpa: LEGAL_VERSIONS.dpa,
           },
+          // Herkomst (utm/referrer/landing), first-touch uit localStorage.
+          attribution: readSignupAttribution(),
         }),
       });
 

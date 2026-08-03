@@ -17,6 +17,7 @@ import {
 } from '@/lib/country-profile';
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 import { sendAdminNotification } from '@/lib/admin-notifications';
+import { sanitizeSignupAttribution, summarizeAttribution } from '@/lib/signup-attribution';
 import { DOMAIN } from '@/lib/domains';
 import {
   recordLegalAcceptances,
@@ -128,6 +129,10 @@ export async function POST(request: NextRequest) {
       password,
       legal_acceptances: clientLegalVersions,
     } = body;
+
+    // Herkomst-attributie (utm/referrer/landing) — untrusted client-input,
+    // server-side gewhitelist. Best-effort: mag registratie nooit raken.
+    const signupAttribution = sanitizeSignupAttribution(body.attribution);
 
     // Server-side validation — de client valideert ook, maar HIER wordt
     // afgedwongen. Regel (Önder, 19 jul 2026): ontbrekende kritieke
@@ -439,13 +444,34 @@ export async function POST(request: NextRequest) {
       // Non-fatal: continue anyway
     }
 
-    // 6b. Admin notification — fire-and-forget, blokkeert flow niet
+    // 6b. Herkomst opslaan op de school — best-effort, non-fatal.
+    if (signupAttribution) {
+      try {
+        const { error: attributionError } = await supabase
+          .from('drivingschools')
+          .update({ signup_attribution: signupAttribution })
+          .eq('id', school.id);
+        if (attributionError) {
+          console.error('signup_attribution opslaan mislukt:', attributionError.message);
+        }
+      } catch (e) {
+        console.error('signup_attribution opslaan mislukt:', e);
+      }
+    }
+
+    // 6c. Admin notification — fire-and-forget, blokkeert flow niet
     sendAdminNotification('school_registered', {
       id: school.id,
       name: school_name.trim(),
       email: emailLower,
       city: city.trim(),
       billing_plan: 'trial',
+      extra: signupAttribution
+        ? {
+            Herkomst: summarizeAttribution(signupAttribution),
+            Landingspagina: signupAttribution.landing_page ?? null,
+          }
+        : { Herkomst: 'direct / onbekend' },
     }).catch((e) => console.error('Admin notify (school_registered) failed:', e));
 
     // 7. Send branded confirmation email — user MUST click the link to
