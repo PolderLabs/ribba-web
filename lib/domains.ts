@@ -35,6 +35,7 @@ const ACCOUNT_PREFIXES = [
   '/login', '/upgrade', '/registreren', '/mijn-ribba', '/payment', '/reset',
   '/set-password', '/welkom', '/pro', '/rijschool-planner', '/verwerkersovereenkomst',
   '/privacy', '/voorwaarden', '/terms', '/admin', '/cal', '/parent-invite',
+  '/support',
 ];
 
 function matches(pathname: string, prefixes: string[]): boolean {
