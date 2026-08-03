@@ -11,20 +11,9 @@
 // /api/support/*, want alleen daar wordt gelogd.
 
 import { useCallback, useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Lui aanmaken, net als op /login: tijdens het prerenderen bestaat er geen
-// browser en zou createBrowserClient de build laten klappen.
-let client: SupabaseClient | null = null;
-function getSupabase(): SupabaseClient {
-  client ??= createBrowserClient(supabaseUrl, supabaseAnonKey);
-  return client;
-}
+import { getSupabase } from './client';
 
 type Fase = 'laden' | 'login' | 'tweefactor-instellen' | 'tweefactor-invoeren' | 'portaal';
 
@@ -305,7 +294,9 @@ export default function SupportPage() {
             {scholen.map((school) => (
               <tr key={school.school_id}>
                 <td style={s.td}>
-                  <strong>{school.school_name}</strong>
+                  <Link href={`/support/${school.school_id}`} style={s.schoolLink}>
+                    {school.school_name}
+                  </Link>
                   {school.is_internal && <span style={s.intern}>intern</span>}
                   {school.city && <span style={s.stad}> · {school.city}</span>}
                 </td>
@@ -401,6 +392,7 @@ const s: Record<string, React.CSSProperties> = {
     color: '#0F172A', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
   },
   stad: { color: '#64748B', fontWeight: 400 },
+  schoolLink: { color: '#0F172A', fontWeight: 700, textDecoration: 'none' },
   badgeOk: {
     background: '#DCFCE7', color: '#166534', padding: '2px 10px',
     borderRadius: 999, fontSize: 12, fontWeight: 600,
