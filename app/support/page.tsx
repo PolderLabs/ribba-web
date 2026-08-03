@@ -35,6 +35,7 @@ interface School {
   lessen: number;
   facturen: number;
   abonnement_status: string | null;
+  cbr_koppeling: string | null;
   laatste_activiteit: string | null;
   onboarding_gereed: boolean;
 }
@@ -287,6 +288,7 @@ export default function SupportPage() {
               <th style={s.thNum}>Beschikb.</th>
               <th style={s.thNum}>Lessen</th>
               <th style={s.th}>Abonnement</th>
+              <th style={s.th} title="Alleen getoond als de koppeling is ingericht">CBR</th>
               <th style={s.th} title="Minstens één ingeschakeld lestype">Lesklaar</th>
             </tr>
           </thead>
@@ -308,6 +310,11 @@ export default function SupportPage() {
                 <td style={s.tdNum}>{school.beschikbaarheid}</td>
                 <td style={s.tdNum}>{school.lessen}</td>
                 <td style={s.td}>{school.abonnement_status ?? '—'}</td>
+                <td style={s.td}>
+                  {school.cbr_koppeling === 'uit'
+                    ? <span style={s.badgeFout}>uit</span>
+                    : (school.cbr_koppeling ?? '—')}
+                </td>
                 <td style={s.td}>
                   <span style={school.onboarding_gereed ? s.badgeOk : s.badgeLet}>
                     {school.onboarding_gereed ? 'ja' : 'nee'}
@@ -395,6 +402,10 @@ const s: Record<string, React.CSSProperties> = {
   schoolLink: { color: '#0F172A', fontWeight: 700, textDecoration: 'none' },
   badgeOk: {
     background: '#DCFCE7', color: '#166534', padding: '2px 10px',
+    borderRadius: 999, fontSize: 12, fontWeight: 600,
+  },
+  badgeFout: {
+    background: '#FEE2E2', color: '#991B1B', padding: '2px 10px',
     borderRadius: 999, fontSize: 12, fontWeight: 600,
   },
   badgeLet: {

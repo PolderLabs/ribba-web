@@ -42,7 +42,11 @@ interface Detail {
   instructeurs: Instructeur[];
   juridisch: { document: string; versie: string; wanneer: string }[];
   abonnement: { status: string; plan: string | null; gestart: string; loopt_tot: string | null } | null;
-  cbr: { laatste: string; laatste_geslaagd: string | null; runs_7d: number; mislukt_7d: number } | null;
+  cbr: {
+    koppeling: string | null; connectie_status: string | null; laatste_fout: string | null;
+    gewijzigd: string | null; laatste: string | null; laatste_geslaagd: string | null;
+    runs_7d: number; mislukt_7d: number;
+  } | null;
   aantallen: Record<string, number>;
   onboarding: Stap[];
 }
@@ -204,7 +208,15 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
           {detail.cbr && (
             <>
               <h2 style={{ ...s.h2, marginTop: 24 }}>CBR-synchronisatie</h2>
+              {detail.cbr.koppeling === 'uit' && (
+                <div style={s.signaalRood}>
+                  Koppeling staat <strong>uit</strong> sinds {moment(detail.cbr.gewijzigd)}.
+                  {detail.cbr.laatste_fout && <> Laatste fout: {detail.cbr.laatste_fout}</>}
+                  {' '}De rijschool moet hem zelf weer aanzetten via Koppelingen.
+                </div>
+              )}
               <dl style={s.lijst}>
+                <Rij label="Koppeling" waarde={detail.cbr.koppeling} />
                 <Rij label="Laatste poging" waarde={moment(detail.cbr.laatste)} />
                 <Rij label="Laatst geslaagd" waarde={moment(detail.cbr.laatste_geslaagd)} />
                 <Rij label="Afgelopen 7 dagen"
@@ -298,6 +310,10 @@ const s: Record<string, React.CSSProperties> = {
   td: { padding: '8px 10px', borderBottom: '1px solid #F1F5F9', color: '#0F172A', whiteSpace: 'nowrap' },
   tdDetail: { padding: '8px 10px', borderBottom: '1px solid #F1F5F9', color: '#475569' },
   rijFout: { background: '#FEF2F2' },
+  signaalRood: {
+    background: '#FEF2F2', color: '#991B1B', padding: '10px 12px',
+    borderRadius: 10, fontSize: 13, marginBottom: 12,
+  },
   foutBadge: {
     background: '#FEE2E2', color: '#991B1B', padding: '1px 7px', borderRadius: 999,
     fontSize: 11, fontWeight: 600, marginRight: 8,
