@@ -78,8 +78,9 @@ function makeClient({
   };
 }
 
-function req(authorization) {
+function req(authorization, url = 'https://mijn.ribba.app/api/support/schools') {
   return {
+    url,
     headers: {
       get: (k) => {
         const h = {
@@ -262,6 +263,39 @@ test('/api/support/schools haalt niveau 0 op via de databasefunctie', async () =
   const rpc = currentClient.rpcCalls.find((c) => c.naam === 'support_school_overview');
   assert.ok(rpc, 'de route moet support_school_overview() gebruiken en niet zelf tabellen bevragen');
   assert.equal(currentClient.logs[0].action, 'schools.list');
+});
+
+// ── 6. Testscholen staan er standaard uit ──────────────────────────────
+//
+// Bewust een expliciete kolom (drivingschools.is_internal) en geen naamfilter:
+// een filter op '[TEST]' verbergt op een dag een echte klant die toevallig
+// "Rijschool Testrit" heet. Wat het scherm toonde, moet bovendien uit het
+// logboek te herleiden zijn — vandaar de keuze in meta.
+
+test('scholenlijst laat interne omgevingen standaard weg', async () => {
+  currentClient = makeClient({
+    rpc: { support_school_overview: { data: [], error: null } },
+  });
+
+  await schoolsGET(req(`Bearer ${token('aal2')}`));
+
+  const rpc = currentClient.rpcCalls.find((c) => c.naam === 'support_school_overview');
+  assert.deepEqual(rpc.args, { p_include_internal: false },
+    'zonder ?intern=1 mogen eigen test- en pilotomgevingen niet meekomen');
+  assert.equal(currentClient.logs[0].meta.intern, false);
+});
+
+test('?intern=1 toont ze wel, en dat staat in het logboek', async () => {
+  currentClient = makeClient({
+    rpc: { support_school_overview: { data: [], error: null } },
+  });
+
+  await schoolsGET(req(`Bearer ${token('aal2')}`, 'https://mijn.ribba.app/api/support/schools?intern=1'));
+
+  const rpc = currentClient.rpcCalls.find((c) => c.naam === 'support_school_overview');
+  assert.deepEqual(rpc.args, { p_include_internal: true });
+  assert.equal(currentClient.logs[0].meta.intern, true,
+    'achteraf moet te zien zijn wat er op het scherm stond');
 });
 
 test('/api/support/schools zonder tweede factor geeft niets prijs', async () => {

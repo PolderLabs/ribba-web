@@ -33,6 +33,7 @@ interface School {
   school_name: string;
   city: string | null;
   status: string | null;
+  is_internal: boolean;
   created_at: string;
   registration_enabled: boolean;
   welcome_email_sent_at: string | null;
@@ -78,6 +79,7 @@ export default function SupportPage() {
   const [factorId, setFactorId] = useState('');
 
   const [scholen, setScholen] = useState<School[]>([]);
+  const [toonIntern, setToonIntern] = useState(false);
 
   // Waar staat de gebruiker: uitgelogd, tweede factor nog niet ingesteld,
   // tweede factor nog niet gebruikt, of binnen? Bewust zonder setState, zodat
@@ -166,7 +168,7 @@ export default function SupportPage() {
       setFout('');
       const { data: { session } } = await getSupabase().auth.getSession();
       if (!session) { setFase('login'); return; }
-      const res = await fetch('/api/support/schools', {
+      const res = await fetch(`/api/support/schools${toonIntern ? '?intern=1' : ''}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (afgebroken) return;
@@ -179,7 +181,7 @@ export default function SupportPage() {
       setScholen(body.schools ?? []);
     })();
     return () => { afgebroken = true; };
-  }, [fase]);
+  }, [fase, toonIntern]);
 
   if (fase === 'laden') {
     return <div style={s.container}><p style={s.stil}>Even geduld…</p></div>;
@@ -269,10 +271,17 @@ export default function SupportPage() {
         <button style={s.tekstknop} onClick={uitloggen}>Uitloggen</button>
       </header>
 
-      <p style={s.uitleg}>
-        Niveau 0 — gegevens van de rijschool en aantallen. Geen gegevens van
-        leerlingen. Elke keer dat je dit scherm opent, wordt dat vastgelegd.
-      </p>
+      <div style={s.balk}>
+        <p style={s.uitleg}>
+          Niveau 0 — gegevens van de rijschool en aantallen. Geen gegevens van
+          leerlingen. Elke keer dat je dit scherm opent, wordt dat vastgelegd.
+        </p>
+        <label style={s.vinkje}>
+          <input type="checkbox" checked={toonIntern}
+            onChange={(e) => setToonIntern(e.target.checked)} />
+          Toon testscholen
+        </label>
+      </div>
 
       {fout && <p style={s.fout}>{fout}</p>}
 
@@ -297,6 +306,7 @@ export default function SupportPage() {
               <tr key={school.school_id}>
                 <td style={s.td}>
                   <strong>{school.school_name}</strong>
+                  {school.is_internal && <span style={s.intern}>intern</span>}
                   {school.city && <span style={s.stad}> · {school.city}</span>}
                 </td>
                 <td style={s.td}>{datum(school.created_at)}</td>
@@ -341,7 +351,19 @@ const s: Record<string, React.CSSProperties> = {
   headerLinks: { display: 'flex', alignItems: 'center', gap: 12 },
   headerTitel: { fontSize: 18, fontWeight: 600, color: '#0F172A' },
   h1: { fontSize: 22, fontWeight: 700, color: '#0F172A', margin: '12px 0 4px' },
-  uitleg: { fontSize: 13, color: '#64748B', margin: '0 0 20px', maxWidth: 720 },
+  uitleg: { fontSize: 13, color: '#64748B', margin: 0, maxWidth: 720 },
+  balk: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    gap: 16, flexWrap: 'wrap', margin: '0 0 20px',
+  },
+  vinkje: {
+    display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+    color: '#475569', cursor: 'pointer', whiteSpace: 'nowrap',
+  },
+  intern: {
+    marginLeft: 8, background: '#EEF2FF', color: '#3730A3', padding: '1px 8px',
+    borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: 0.3,
+  },
   stil: { fontSize: 14, color: '#64748B', margin: '0 0 16px' },
   input: {
     width: '100%', padding: '12px 14px', border: '1px solid #E2E8F0', borderRadius: 10,
