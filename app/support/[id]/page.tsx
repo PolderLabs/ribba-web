@@ -18,6 +18,8 @@ interface Stap {
   sleutel: string;
   label: string;
   wanneer: string | null;
+  /** Los van `wanneer`: een stap kan gedaan zijn zonder betrouwbaar tijdstip. */
+  gereed: boolean;
   blokkerend: boolean;
 }
 
@@ -38,6 +40,7 @@ interface Detail {
     btw: string | null; iban_ingevuld: boolean; website: string | null;
     logo: boolean; registratie_slug: string | null; registratie_open: boolean;
     welkomstmail: string | null; plango_import: string | null;
+    wizard: string | null; wizard_afgesloten: string | null;
   };
   instructeurs: Instructeur[];
   juridisch: { document: string; versie: string; wanneer: string }[];
@@ -118,7 +121,7 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
 
   const { school, onboarding } = detail;
   // De eerste stap die nog niet is gezet: daar is het gesprek over.
-  const gestopt = onboarding.find((stap) => !stap.wanneer);
+  const gestopt = onboarding.find((stap) => !stap.gereed);
 
   return (
     <div style={s.pagina}>
@@ -145,9 +148,11 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
           <ol style={s.stappen}>
             {onboarding.map((stap) => (
               <li key={stap.sleutel} style={s.stap}>
-                <span style={stap.wanneer ? s.bolOk : (stap.blokkerend ? s.bolBlok : s.bolLeeg)} />
-                <span style={stap.wanneer ? s.stapLabel : s.stapLabelOpen}>{stap.label}</span>
-                <span style={s.stapDatum}>{stap.wanneer ? moment(stap.wanneer) : '—'}</span>
+                <span style={stap.gereed ? s.bolOk : (stap.blokkerend ? s.bolBlok : s.bolLeeg)} />
+                <span style={stap.gereed ? s.stapLabel : s.stapLabelOpen}>{stap.label}</span>
+                <span style={s.stapDatum}>
+                  {stap.wanneer ? moment(stap.wanneer) : (stap.gereed ? 'gedaan' : '—')}
+                </span>
               </li>
             ))}
           </ol>
@@ -169,6 +174,10 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
             <Rij label="Aanmelden open" waarde={school.registratie_open ? 'ja' : 'nee'} />
             <Rij label="Welkomstmail" waarde={school.welkomstmail ? moment(school.welkomstmail) : 'niet verstuurd'} />
             <Rij label="Plango-import" waarde={school.plango_import ? moment(school.plango_import) : 'nee'} />
+            <Rij label="Setupwizard" waarde={
+              school.wizard === 'completed' ? `afgerond · ${moment(school.wizard_afgesloten)}`
+              : school.wizard === 'skipped' ? `overgeslagen · ${moment(school.wizard_afgesloten)}`
+              : 'nog niet doorlopen'} />
             <Rij label="Abonnement" waarde={detail.abonnement
               ? `${detail.abonnement.status}${detail.abonnement.plan ? ` · ${detail.abonnement.plan}` : ''}`
               : 'geen'} />
