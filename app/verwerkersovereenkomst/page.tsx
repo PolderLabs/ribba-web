@@ -105,7 +105,7 @@ export default function VerwerkersovereenkomstPage() {
       </Link>
 
       <h1 style={styles.h1}>Verwerkersovereenkomst — Ribba Rijschool Planner</h1>
-      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.dpa} · Laatst bijgewerkt: 28 juli 2026</p>
+      <p style={styles.updated}>Versie: {LEGAL_VERSIONS.dpa} · Laatst bijgewerkt: 6 augustus 2026</p>
       <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 16, marginBottom: 32, fontSize: 14, color: '#1E40AF' }}>
         Deze verwerkersovereenkomst geldt voor <strong>Ribba Rijschool Planner</strong> (de rijschoolsoftware/iOS-app voor rijscholen).
       </div>
@@ -358,6 +358,40 @@ export default function VerwerkersovereenkomstPage() {
               Boekhouding (alleen indien door Gebruiker gekoppeld)
             </td>
             <td style={styles.td}>Nederland</td>
+          </tr>
+          <tr>
+            <td style={styles.td}>Vercel Inc.</td>
+            <td style={styles.td}>
+              Hosting van de webomgeving (mijn.ribba.app)
+            </td>
+            <td style={styles.td}>
+              VS (gecertificeerd onder EU-VS Data Privacy Framework)
+            </td>
+          </tr>
+          <tr>
+            <td style={styles.td}>Expo (650 Industries, Inc.)</td>
+            <td style={styles.td}>
+              Distributie van app-updates en verzending van pushberichten
+            </td>
+            <td style={styles.td}>
+              VS (gecertificeerd onder EU-VS Data Privacy Framework)
+            </td>
+          </tr>
+          <tr>
+            <td style={styles.td}>Functional Software, Inc. (Sentry)</td>
+            <td style={styles.td}>
+              Foutmeldingen en crashrapportage van de app
+            </td>
+            <td style={styles.td}>EU (Duitsland)</td>
+          </tr>
+          <tr>
+            <td style={styles.td}>OpenRouter, Inc.</td>
+            <td style={styles.td}>
+              Verwerking van vragen aan de Ribba Assistent
+            </td>
+            <td style={styles.td}>
+              VS (gecertificeerd onder EU-VS Data Privacy Framework)
+            </td>
           </tr>
         </tbody>
       </table>
