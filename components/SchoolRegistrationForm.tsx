@@ -40,6 +40,7 @@ type FormData = {
   billing_city: string;
   kvk_number: string;
   btw_number: string;
+  promo_code: string;
   password: string;
   password_confirm: string;
   terms_accepted: boolean;
@@ -85,6 +86,7 @@ export default function SchoolRegistrationForm() {
     billing_city: '',
     kvk_number: '',
     btw_number: '',
+    promo_code: '',
     password: '',
     password_confirm: '',
     terms_accepted: false,
@@ -95,6 +97,9 @@ export default function SchoolRegistrationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
+  // Promocode-terugkoppeling bij blur. 'checking' voorkomt een groen vinkje
+  // dat nog kan omslaan; 'idle' is ook de staat bij een leeg veld.
+  const [promoState, setPromoState] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // Het profiel stuurt labels, placeholders en validatie. Fallback op NL kan
   // hier niet stil misgaan: de picker biedt uitsluitend enabled landen aan en
@@ -216,6 +221,7 @@ export default function SchoolRegistrationForm() {
           billing_city: useBilling ? form.billing_city : null,
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
+          promo_code: form.promo_code.trim() ? form.promo_code.trim().toUpperCase() : null,
           password: form.password,
           password_confirm: form.password_confirm,
           legal_acceptances: {
@@ -230,6 +236,15 @@ export default function SchoolRegistrationForm() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        // Een invoerfout die bij één veld hoort (nu: de promocode) landt daar,
+        // niet in de algemene foutbalk bovenaan — anders zoekt iemand zich suf
+        // naar wat er mis is aan een formulier dat er goed uitziet.
+        if (data?.field === 'promo_code') {
+          setErrors((prev) => ({ ...prev, promo_code: data.error ?? 'Deze promocode is niet geldig.' }));
+          setPromoState('invalid');
+          document.getElementById('promo_code')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          return;
+        }
         throw new Error(data?.error || 'Er ging iets mis. Probeer het opnieuw.');
       }
 
@@ -253,6 +268,32 @@ export default function SchoolRegistrationForm() {
         delete next[field];
         return next;
       });
+    }
+  }
+
+  /**
+   * Controleert de promocode bij blur. Puur UI-terugkoppeling: de bindende
+   * controle gebeurt bij het versturen, transactioneel in de database. Een
+   * netwerkfout laat het veld daarom neutraal (idle) — nooit ten onrechte
+   * rood, want dan zou iemand een geldige code weggooien.
+   */
+  async function checkPromoCode(raw: string) {
+    const code = raw.trim();
+    if (!code) {
+      setPromoState('idle');
+      return;
+    }
+    setPromoState('checking');
+    try {
+      const res = await fetch('/api/validate-promo-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json().catch(() => null);
+      setPromoState(data?.valid === true ? 'valid' : 'invalid');
+    } catch {
+      setPromoState('idle');
     }
   }
 
@@ -536,6 +577,33 @@ export default function SchoolRegistrationForm() {
             onChange={(e) => handleChange('btw_number', e.target.value)}
           />
           {errors.btw_number && <p className="form-error">{errors.btw_number}</p>}
+        </div>
+
+        {/* Promocode — optioneel. Verlengt de gratis periode. */}
+        <div className="form-group">
+          <label htmlFor="promo_code">Promocode (optioneel)</label>
+          <input
+            id="promo_code"
+            type="text"
+            autoCapitalize="characters"
+            placeholder="Heb je een code? Vul hem hier in"
+            className={errors.promo_code || promoState === 'invalid' ? 'error' : ''}
+            value={form.promo_code}
+            onChange={(e) => {
+              handleChange('promo_code', e.target.value.toUpperCase());
+              setPromoState('idle');
+            }}
+            onBlur={(e) => checkPromoCode(e.target.value)}
+          />
+          {errors.promo_code ? (
+            <p className="form-error">{errors.promo_code}</p>
+          ) : promoState === 'invalid' ? (
+            <p className="form-error">Deze promocode is niet geldig.</p>
+          ) : promoState === 'valid' ? (
+            <p style={{ fontSize: 13, color: '#15803D', marginTop: 6 }}>
+              Code geldig — je krijgt een langere gratis periode.
+            </p>
+          ) : null}
         </div>
 
         {/* Voornaam */}

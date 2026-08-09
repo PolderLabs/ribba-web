@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
       kvk_number,
       btw_number,
       password,
+      promo_code,
       legal_acceptances: clientLegalVersions,
     } = body;
 
@@ -228,6 +229,39 @@ export async function POST(request: NextRequest) {
         { error: 'Je moet akkoord gaan met de Algemene Voorwaarden, Privacyverklaring en Verwerkersovereenkomst.' },
         { status: 400 },
       );
+    }
+
+    // Promocode (optioneel). Twee lagen, bewust:
+    //   - HIER een vriendelijke voorcontrole, zodat een typefout geen
+    //     auth-user aanmaakt die we daarna weer moeten opruimen;
+    //   - de GARANTIE zit in create_school_with_owner, die de code in
+    //     dezelfde transactie als de schoolcreatie inwisselt. Tussen deze
+    //     check en die transactie kan een gelimiteerde code uitgeput raken;
+    //     dan wint de transactie en faalt de registratie alsnog — correct,
+    //     want de code is dan echt op.
+    const promoCode =
+      typeof promo_code === 'string' && promo_code.trim() !== ''
+        ? promo_code.trim().toUpperCase()
+        : null;
+
+    if (promoCode) {
+      const { data: promoCheck, error: promoError } = await supabase.rpc(
+        'validate_promo_code',
+        { p_code: promoCode },
+      );
+      if (promoError) {
+        console.error('validate_promo_code error:', promoError);
+        return NextResponse.json(
+          { error: 'Kon de promocode niet controleren. Probeer het opnieuw.' },
+          { status: 500 },
+        );
+      }
+      if (!(promoCheck as { valid?: boolean } | null)?.valid) {
+        return NextResponse.json(
+          { error: 'Deze promocode is niet geldig.', field: 'promo_code' },
+          { status: 400 },
+        );
+      }
     }
 
     const emailLower = email.trim().toLowerCase();
@@ -364,6 +398,7 @@ export async function POST(request: NextRequest) {
           kvk_number: normalizeBusinessRegister(kvk_number),
           btw_number: btw_number && btw_number.trim() !== '' ? normalizeVat(btw_number) : null,
           registration_slug: slug,
+          promo_code: promoCode,
         },
       },
     );
@@ -373,6 +408,18 @@ export async function POST(request: NextRequest) {
       // De transactie is volledig teruggerold: er is géén school, instructeur,
       // licentie of claim. Alleen de auth-user (buiten de transactie) resteert.
       await supabase.auth.admin.deleteUser(authUserId);
+
+      // Een ongeldige/uitgeputte promocode is geen serverfout maar een
+      // invoerfout: die hoort bij het codeveld te landen, niet als generieke
+      // 500. De RPC markeert hem met een stabiele detail-string.
+      const rpcDetail = `${rpcError.details ?? ''} ${rpcError.message ?? ''}`;
+      if (rpcDetail.includes('promo_code_invalid') || rpcDetail.includes('promo_code_exhausted')) {
+        return NextResponse.json(
+          { error: 'Deze promocode is niet geldig.', field: 'promo_code' },
+          { status: 400 },
+        );
+      }
+
       return NextResponse.json(
         { error: 'Kon rijschool niet aanmaken. Probeer het opnieuw.' },
         { status: 500 },
