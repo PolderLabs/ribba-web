@@ -1,8 +1,37 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
-import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+
+// Het aanbod komt SERVER-SIDE uit Stripe, niet uit een lijst in deze
+// component. Een wijziging van €25 → €30 of van 1 → 3 maanden gratis moet
+// zichtbaar worden zonder codewijziging. Zou de prijs hier staan, dan hadden
+// we dezelfde dubbele waarheid als een price-id-mapping — alleen in
+// marketingtekst, waar hij nog moeilijker te vinden is.
+type AanbodKaart = {
+  plan: SignupPlan;
+  naam: string;
+  samenvatting: string;
+  punten: string[];
+  bedragCenten: number;
+  valuta: string;
+  interval: string;
+  gratisDagen: number | null;
+};
+
+function bedrag(centen: number, valuta: string): string {
+  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: valuta })
+    .format(centen / 100);
+}
+
+function gratisPeriode(dagen: number | null): string | null {
+  if (!dagen) return null;
+  if (dagen % 30 === 0 && dagen >= 30) {
+    const m = dagen / 30;
+    return m === 1 ? '1 maand gratis' : `${m} maanden gratis`;
+  }
+  return `${dagen} dagen gratis`;
+}
 import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
 import { LEGAL_VERSIONS } from '@/lib/legal-versions';
@@ -97,7 +126,22 @@ export default function SchoolRegistrationForm() {
     privacy_accepted: false,
     dpa_accepted: false,
   });
+  const [aanbod, setAanbod] = useState<AanbodKaart[] | null>(null);
+  const [aanbodFout, setAanbodFout] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    let afgebroken = false;
+    fetch('/api/signup/offer')
+      .then((r) => r.json())
+      .then((d) => {
+        if (afgebroken) return;
+        if (d?.beschikbaar && Array.isArray(d.kaarten)) setAanbod(d.kaarten);
+        else setAanbodFout(true);
+      })
+      .catch(() => { if (!afgebroken) setAanbodFout(true); });
+    return () => { afgebroken = true; };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -310,48 +354,67 @@ export default function SchoolRegistrationForm() {
         {/* Abonnement — de rijschool kiest expliciet; geen default. */}
         <fieldset className="form-group full-width" style={{ border: 0, padding: 0, margin: 0 }}>
           <legend style={{ padding: 0, marginBottom: 6, fontWeight: 600 }}>Kies je abonnement</legend>
-          <p style={{ margin: '0 0 12px', fontSize: 14, color: '#57534E', lineHeight: 1.5 }}>
-            Je kunt later altijd naar Premium overstappen.
-          </p>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {SIGNUP_PLANS.map((keuze) => {
-              const prijs = getPlanPricing(keuze);
-              const gekozen = form.plan === keuze;
-              return (
-                <label
-                  key={keuze}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-                    border: `1px solid ${gekozen ? '#2563EB' : '#E7E5E4'}`,
-                    background: gekozen ? '#EFF6FF' : '#FFFFFF',
-                    borderRadius: 10, padding: '12px 14px',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="plan"
-                    value={keuze}
-                    checked={gekozen}
-                    onChange={() => setForm({ ...form, plan: keuze })}
-                    style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
-                  />
-                  <span>
-                    <strong style={{ display: 'block' }}>
-                      {keuze === 'basic' ? 'Basic' : 'Premium'}
-                    </strong>
-                    <span style={{ fontSize: 14, color: '#57534E' }}>
-                      {formatCentsForDisplay(prijs.grossMonthlyCents)} per maand incl. btw
-                    </span>
-                    <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 2 }}>
-                      {keuze === 'basic'
-                        ? 'Voor rijscholen met één instructeur.'
-                        : 'Voor rijscholen met meerdere instructeurs.'}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+
+          {aanbodFout && (
+            <p style={{ margin: 0, fontSize: 14, color: '#B45309', lineHeight: 1.5 }}>
+              We kunnen het actuele aanbod nu niet ophalen. Probeer het later opnieuw of mail{' '}
+              <a href="mailto:team@ribba.app">team@ribba.app</a>.
+            </p>
+          )}
+          {!aanbod && !aanbodFout && (
+            <p style={{ margin: 0, fontSize: 14, color: '#78716C' }}>Aanbod ophalen…</p>
+          )}
+
+          {aanbod && (
+            <>
+              <p style={{ margin: '0 0 12px', fontSize: 14, color: '#57534E', lineHeight: 1.5 }}>
+                Je kunt later altijd naar Premium overstappen.
+              </p>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {aanbod.map((kaart) => {
+                  const gekozen = form.plan === kaart.plan;
+                  const gratis = gratisPeriode(kaart.gratisDagen);
+                  return (
+                    <label
+                      key={kaart.plan}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                        border: `1px solid ${gekozen ? '#2563EB' : '#E7E5E4'}`,
+                        background: gekozen ? '#EFF6FF' : '#FFFFFF',
+                        borderRadius: 10, padding: '12px 14px',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="plan"
+                        value={kaart.plan}
+                        checked={gekozen}
+                        onChange={() => setForm({ ...form, plan: kaart.plan })}
+                        style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong style={{ display: 'block' }}>{kaart.naam}</strong>
+                        {gratis && (
+                          <span style={{ display: 'block', fontSize: 14, color: '#15803D', fontWeight: 600 }}>
+                            {gratis}
+                          </span>
+                        )}
+                        <span style={{ display: 'block', fontSize: 14, color: '#57534E' }}>
+                          {gratis ? 'Daarna ' : ''}{bedrag(kaart.bedragCenten, kaart.valuta)} per maand
+                        </span>
+                        <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 4 }}>
+                          {kaart.punten.join(' · ')}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: gratis ? '#15803D' : '#57534E', whiteSpace: 'nowrap' }}>
+                        {gratis ? 'Vandaag €0' : `Vandaag ${bedrag(kaart.bedragCenten, kaart.valuta)}`}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
           {errors.plan && <span className="error-text">{errors.plan}</span>}
         </fieldset>
 
