@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
       expires_at: new Date(Date.now() + PENDING_GELDIG_UREN * 3600_000).toISOString(),
     };
 
-    let pendingId: string | null = null;
+    let gevondenId: string | null = null;
     const { data: nieuw, error: insertFout } = await db
       .from('pending_registrations').insert(rij).select('id').single();
 
@@ -187,10 +187,19 @@ export async function POST(request: NextRequest) {
           409,
         );
       }
-      pendingId = bestaand.id;
+      gevondenId = bestaand.id;
     } else {
-      pendingId = nieuw!.id;
+      gevondenId = nieuw?.id ?? null;
     }
+
+    // Vanaf hier moet het id vaststaan. Zonder id kan de webhook straks niet
+    // weten welke registratie hij afrondt, en dan is een Checkout waardeloos —
+    // dus liever hier stoppen dan een sessie maken die nergens op aansluit.
+    if (!gevondenId) {
+      console.error('signup/start: geen pending-registratie-id na insert/hergebruik');
+      return fout('Er ging iets mis. Probeer het opnieuw.', 500);
+    }
+    const pendingId: string = gevondenId;
 
     // ── 5. Checkout Session ──────────────────────────────────────────────
     // De trialduur komt uit Stripe en wordt hier alleen doorgegeven. Ontbreekt
