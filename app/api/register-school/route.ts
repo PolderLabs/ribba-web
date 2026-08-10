@@ -19,6 +19,7 @@ import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/app-links';
 import { sendAdminNotification } from '@/lib/admin-notifications';
 import { sanitizeSignupAttribution, summarizeAttribution } from '@/lib/signup-attribution';
 import { DOMAIN } from '@/lib/domains';
+import { isSignupPlan } from '@/lib/signup-plan';
 import {
   recordLegalAcceptances,
   pickAcceptedVersions,
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest) {
       kvk_number,
       btw_number,
       password,
+      plan,
       legal_acceptances: clientLegalVersions,
     } = body;
 
@@ -140,6 +142,21 @@ export async function POST(request: NextRequest) {
     if (!school_name || !first_name || !last_name || !email || !phone || !address || !postal_code || !city || !kvk_number || !password) {
       return NextResponse.json(
         { error: 'Alle verplichte velden moeten ingevuld zijn.' },
+        { status: 400 },
+      );
+    }
+
+    // Plankeuze — fase 3B.2. De servergrens, niet het formulier, bepaalt wat
+    // een geldige keuze is. In deze fase heeft de waarde nog GEEN gevolg voor
+    // wat er wordt aangemaakt: de school krijgt onveranderd een trial-licentie.
+    // Hij wordt hier alleen afgedwongen zodat het contract vaststaat vóórdat
+    // 3B.3 hem gebruikt om het Stripe-aanbod op te zoeken.
+    //
+    // Bewust géén default: stil terugvallen op 'basic' zou betekenen dat een
+    // rijschool een plan krijgt dat hij niet gekozen heeft.
+    if (!isSignupPlan(plan)) {
+      return NextResponse.json(
+        { error: 'Kies een abonnement (Basic of Premium).' },
         { status: 400 },
       );
     }

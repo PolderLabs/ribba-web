@@ -138,6 +138,9 @@ function makeRequest(overrides = {}) {
       postal_code: '1234 AB',
       city: 'Teststad',
       kvk_number: '12345678',
+      // Verplicht sinds fase 3B.2: de plankeuze is een servergrens, geen
+      // optioneel veld. Zonder waarde geeft de route een 400.
+      plan: 'basic',
       password: 'wachtwoord123',
       legal_acceptances: { terms: '1.0', privacy: '1.0', dpa: '1.0' },
       ...overrides,
@@ -240,4 +243,23 @@ test('side-effect faalt NA commit ⇒ registratie blijft staan, account NIET ver
   assert.equal(rpcCalls.length, 1);
   // KRITISCH: geen cleanup van de auth-user — dat zou een wees-school opleveren
   assert.deepEqual(deletedAuthUsers, []);
+});
+
+// Fase 3B.2: de plankeuze is een harde voorwaarde van dit endpoint. Deze twee
+// tests staan hier — bij de creatietests — omdat ze bewijzen dat een
+// registratie zónder geldige keuze niet eens tot een RPC-aanroep komt.
+test('zonder plan wordt er niets aangemaakt', async () => {
+  resetState();
+  const res = await POST(makeRequest({ plan: undefined }));
+  assert.equal(res.status, 400);
+  assert.equal(rpcCalls.length, 0, 'er is toch een school aangemaakt');
+  assert.equal(inserts.length, 0, 'er is toch iets weggeschreven');
+});
+
+test('met een onbekend plan wordt er niets aangemaakt', async () => {
+  resetState();
+  const res = await POST(makeRequest({ plan: 'gratis' }));
+  assert.equal(res.status, 400);
+  assert.equal(rpcCalls.length, 0, 'er is toch een school aangemaakt');
+  assert.equal(inserts.length, 0, 'er is toch iets weggeschreven');
 });

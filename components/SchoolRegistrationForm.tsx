@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
+import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
 import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
 import { LEGAL_VERSIONS } from '@/lib/legal-versions';
@@ -40,6 +42,7 @@ type FormData = {
   billing_city: string;
   kvk_number: string;
   btw_number: string;
+  plan: SignupPlan | '';
   password: string;
   password_confirm: string;
   terms_accepted: boolean;
@@ -85,6 +88,9 @@ export default function SchoolRegistrationForm() {
     billing_city: '',
     kvk_number: '',
     btw_number: '',
+    // Bewust leeg: de rijschool kiest expliciet. Een default zou betekenen dat
+    // iemand een abonnement krijgt waar hij nooit op geklikt heeft.
+    plan: '',
     password: '',
     password_confirm: '',
     terms_accepted: false,
@@ -105,6 +111,7 @@ export default function SchoolRegistrationForm() {
   function validate(): FormErrors {
     const e: FormErrors = {};
 
+    if (!form.plan) e.plan = 'Kies een abonnement';
     if (!form.legal_form) e.legal_form = 'Kies de bedrijfsvorm van je rijschool';
     if (!getCountryProfile(form.country_code)) e.country_code = 'Kies een land';
 
@@ -214,6 +221,7 @@ export default function SchoolRegistrationForm() {
           billing_address: useBilling ? form.billing_address : null,
           billing_postal_code: useBilling ? normalizePostcode(form.billing_postal_code) : null,
           billing_city: useBilling ? form.billing_city : null,
+          plan: form.plan,
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
           password: form.password,
@@ -299,6 +307,54 @@ export default function SchoolRegistrationForm() {
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="form-grid">
+        {/* Abonnement — de rijschool kiest expliciet; geen default. */}
+        <fieldset className="form-group full-width" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={{ padding: 0, marginBottom: 6, fontWeight: 600 }}>Kies je abonnement</legend>
+          <p style={{ margin: '0 0 12px', fontSize: 14, color: '#57534E', lineHeight: 1.5 }}>
+            Je kunt later altijd naar Premium overstappen.
+          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {SIGNUP_PLANS.map((keuze) => {
+              const prijs = getPlanPricing(keuze);
+              const gekozen = form.plan === keuze;
+              return (
+                <label
+                  key={keuze}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                    border: `1px solid ${gekozen ? '#2563EB' : '#E7E5E4'}`,
+                    background: gekozen ? '#EFF6FF' : '#FFFFFF',
+                    borderRadius: 10, padding: '12px 14px',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="plan"
+                    value={keuze}
+                    checked={gekozen}
+                    onChange={() => setForm({ ...form, plan: keuze })}
+                    style={{ marginTop: 3, width: 18, height: 18, accentColor: '#2563EB' }}
+                  />
+                  <span>
+                    <strong style={{ display: 'block' }}>
+                      {keuze === 'basic' ? 'Basic' : 'Premium'}
+                    </strong>
+                    <span style={{ fontSize: 14, color: '#57534E' }}>
+                      {formatCentsForDisplay(prijs.grossMonthlyCents)} per maand incl. btw
+                    </span>
+                    <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 2 }}>
+                      {keuze === 'basic'
+                        ? 'Voor rijscholen met één instructeur.'
+                        : 'Voor rijscholen met meerdere instructeurs.'}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {errors.plan && <span className="error-text">{errors.plan}</span>}
+        </fieldset>
+
         {/* Bedrijfsvorm */}
         <div className="form-group full-width">
           <label htmlFor="legal_form">Bedrijfsvorm</label>
