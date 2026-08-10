@@ -1,5 +1,5 @@
 // Handgeschreven row-types voor de referral-tabellen
-// (supabase/migrations/20260729000000_referral_program.sql).
+// (ribbaPro: supabase/migrations/20260729000000_referral_program.sql).
 // Het gedeelde Supabase-project is niet CLI-gelinkt vanuit deze repo, dus
 // geen `supabase gen types` — houd dit bestand in sync met de migratie.
 

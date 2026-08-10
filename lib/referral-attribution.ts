@@ -3,7 +3,7 @@
 // de caller wikkelt recordReferralAttribution al niet in een try/catch,
 // dus deze module vangt alles zelf af en logt alleen.
 //
-// Regels (zie supabase/migrations/20260729000000_referral_program.sql):
+// Regels (zie ribbaPro: supabase/migrations/20260729000000_referral_program.sql):
 // - code moet horen bij een actieve membership van DEZE school, met een
 //   actief programma (code van school A op het formulier van school B → negeren);
 // - self-referral (partner-e-mail == leerling-e-mail) → negeren;

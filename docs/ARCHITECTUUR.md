@@ -40,7 +40,7 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
   - `/api/inquiry-submit` — inquiry-intake vanaf de vergelijkingssite (CORS), schrijft `inquiries` + `inquiry_recipients`, stuurt outreach-mails naar rijscholen
   - `/chat/[token]` — geanonimiseerde web-chat gateway met e-mailverificatie (Supabase Auth OTP), realtime via Supabase Realtime
   - `/api/cron/chat-notifications` — reply-notificatie e-mails (gebundeld, beide richtingen)
-  - `supabase/migrations/` — schema voor inquiries/conversations/messages/marketplace_profiles
+  - `ribbaPro:supabase/migrations/` — schema voor inquiries/conversations/messages/marketplace_profiles
     **plus de gedeelde SECURITY DEFINER RPC's** (`get_chat_context`, `claim_inquiry`,
     `claim_inquiry_recipient`, `get_inquiry_for_recipient`, `mark_messages_read`) — web-chat en
     ribbaPro-app gebruiken exact dezelfde claim/masking-semantiek
@@ -59,7 +59,7 @@ Deze repo = **de website voor Ribba Rijschool Planner**, gehost op `link.ribba.a
     KYC); rijscholen geven een SEPA-machtiging af op `/mijn-ribba/referral/betaling`;
     `/api/cron/referral-payouts` incasseert bevestigde payouts (commissie + Ribba-fee) en
     `/api/stripe-webhook` maakt na settlement de transfer naar de partner
-  - `supabase/migrations/20260729000000_referral_program.sql` — tabellen + de RPC's die
+  - `ribbaPro:supabase/migrations/20260729000000_referral_program.sql` — tabellen + de RPC's die
     ribbaPro aanroept (`referral_program_upsert/_get`, `referral_list_referrals/_payouts`,
     `referral_mark_milestone`, `referral_confirm/_reject/_retry_payout`, `referral_void_referral`,
     `referral_program_public`)
@@ -114,6 +114,42 @@ maar de middleware-redirect is er als vangnet.
 
 Beide de iOS app en deze web-repo praten met **dezelfde Supabase database**:
 `vsuhctqdtsxyimzsbjds.supabase.co`.
+
+### Migraties wonen in ribbaPro — niet hier
+
+Deze repo heeft **geen** `supabase/migrations/`. Alle migraties voor het
+gedeelde project leven in `ribbaPro/supabase/migrations/`, ook die van de
+web-kant. Een databasewijziging vanuit deze repo gaat dus via een PR in
+ribbaPro; de regels en de CI-guard staan daar (`CLAUDE.md`,
+«Databasemigraties — repo-first»).
+
+Waarom: beide repo's schrijven naar dezelfde
+`supabase_migrations.schema_migrations`. Zolang twee mappen los van elkaar
+versies uitdelen bewaakt niemand de uniciteit. Dat is één keer misgegaan —
+versie `20260721170000` was in gebruik door `join_school` (app) én
+`merge_get_chat_context` (web); bij een apply van beide mappen op één database
+verliest de tweede zijn migratie, en welke dat is hangt aan de volgorde.
+
+De handgeschreven row-types in `lib/marketplace-types.ts` en
+`lib/referral-types.ts` blijven wél hier — het project is niet CLI-gelinkt
+vanuit deze repo, dus geen `supabase gen types`. Houd ze in sync met de
+migratie in ribbaPro.
+
+### chat-notifications draait op pg_cron, niet op Vercel Cron
+
+Het Vercel-plan staat geen sub-dagelijkse cron toe, dus de 5-minuten
+reply-notificatie-trigger draait op **Supabase pg_cron**:
+
+- Extensies: `pg_cron` + `pg_net`.
+- Secret: `CRON_SECRET` staat in de Supabase **Vault** onder
+  `cron_secret_chat_notifications` — niet in `cron.job.command`.
+- Job `chat-notifications-5min` (`*/5 * * * *`) doet via `net.http_get` een call
+  naar `https://link.ribba.app/api/cron/chat-notifications` met
+  `Authorization: Bearer <vault-secret>`.
+
+Herstellen of aanpassen: `select * from cron.job where jobname =
+'chat-notifications-5min'`. Bij een gewijzigd `CRON_SECRET` ook de
+Vault-secret bijwerken (`vault.update_secret`).
 
 ### Gedeelde tabellen
 
