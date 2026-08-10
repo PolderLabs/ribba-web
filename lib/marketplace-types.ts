@@ -1,5 +1,5 @@
 // Handgeschreven row-types voor de marketplace-tabellen
-// (supabase/migrations/20260711000000_marketplace_mvp.sql).
+// (ribbaPro: supabase/migrations/20260711000000_marketplace_mvp.sql).
 // Het gedeelde Supabase-project is niet CLI-gelinkt vanuit deze repo, dus
 // geen `supabase gen types` — houd dit bestand in sync met de migratie.
 

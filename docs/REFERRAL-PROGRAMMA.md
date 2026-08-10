@@ -113,7 +113,7 @@ de migration-history vastgelegd.
 
 > We hebben in ribba-web een referral-programma per rijschool gebouwd (branch
 > `feat/referral-program`). De gedeelde Supabase-migratie
-> `supabase/migrations/20260729000000_referral_program.sql` definieert de
+> `supabase/migrations/20260729000000_referral_program.sql` (in ribbaPro) definieert de
 > tabellen (`referral_programs`, `referral_program_rewards`, `referral_partners`,
 > `referral_partner_memberships`, `referrals`, `referral_payouts`) en SECURITY
 > DEFINER RPC's. Jullie bouwen de rijschoolhouder-kant, uitsluitend via deze
