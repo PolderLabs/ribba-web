@@ -15,6 +15,9 @@
 // opgezocht, en pas in 3B.5 welk entitlement de school krijgt — en dan nog
 // steeds via `plan`-metadata op de Price, niet via deze constante.
 
+/** De metadatasleutel waarmee Stripe het Ribba-entitlement meelevert. */
+export const PLAN_METADATA_KEY = 'plan';
+
 export const SIGNUP_PLANS = ['basic', 'premium'] as const;
 export type SignupPlan = (typeof SIGNUP_PLANS)[number];
 
