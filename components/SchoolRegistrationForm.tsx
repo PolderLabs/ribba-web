@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
+// De actiecode is zichtbaar zodra — en alleen zodra — de route hem kan
+// honoreren. Afgeleid, niet los instelbaar. Zie lib/signup-funnel.ts.
+import { ACTIEVE_SIGNUP_ROUTE, promoBeschikbaar } from '@/lib/signup-funnel';
 
 // Het aanbod komt SERVER-SIDE uit Stripe, niet uit een lijst in deze
 // component. Een wijziging van €25 → €30 of van 1 → 3 maanden gratis moet
@@ -158,7 +161,11 @@ export default function SchoolRegistrationForm() {
   const [codeGeweigerd, setCodeGeweigerd] = useState(false);
   const [codeBezig, setCodeBezig] = useState(false);
 
-  const haalAanbod = useCallback(async (code: string | null) => {
+  const haalAanbod = useCallback(async (codeInput: string | null) => {
+    // Zolang de oude submitroute draait, wordt er geen code meegestuurd — ook
+    // niet als er er op een of andere manier toch een in de state komt. Het
+    // getoonde aanbod is dan gegarandeerd het aanbod dat wordt uitgevoerd.
+    const code = promoBeschikbaar ? codeInput : null;
     setCodeBezig(true);
     try {
       const url = code ? `/api/signup/offer?code=${encodeURIComponent(code)}` : '/api/signup/offer';
@@ -284,7 +291,7 @@ export default function SchoolRegistrationForm() {
 
     try {
       const useBilling = isBv && form.billing_differs;
-      const res = await fetch('/api/register-school', {
+      const res = await fetch(ACTIEVE_SIGNUP_ROUTE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,11 +310,10 @@ export default function SchoolRegistrationForm() {
           billing_postal_code: useBilling ? normalizePostcode(form.billing_postal_code) : null,
           billing_city: useBilling ? form.billing_city : null,
           plan: form.plan,
-          // Alleen de code die de server heeft geaccepteerd. Wat de bezoeker
-          // heeft ingetypt maar geweigerd is, gaat niet mee — de server
-          // valideert straks toch opnieuw, maar het is geen data die we
-          // hoeven te versturen om daarna te laten vallen.
-          promo_code: codeToegepast,
+          // Alleen wanneer de route hem ook kan honoreren, en alleen de code
+          // die de SERVER heeft geaccepteerd. Een geweigerde code gaat niet
+          // mee; de server valideert straks toch opnieuw.
+          ...(promoBeschikbaar && codeToegepast ? { promo_code: codeToegepast } : {}),
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
           password: form.password,
@@ -413,7 +419,10 @@ export default function SchoolRegistrationForm() {
                 Je kunt later altijd naar Premium overstappen.
               </p>
 
-              {/* Actiecode. Bewust bóven de kaarten: je ziet meteen wat hij doet. */}
+              {/* Actiecode. Bewust bóven de kaarten: je ziet meteen wat hij
+                  doet. Verschijnt pas wanneer het formulier naar de nieuwe
+                  funnel post — zie lib/signup-funnel.ts. */}
+              {promoBeschikbaar && (
               <div style={{ marginBottom: 14 }}>
                 {codeToegepast ? (
                   <div style={{
@@ -488,6 +497,7 @@ export default function SchoolRegistrationForm() {
                   </p>
                 )}
               </div>
+              )}
               <div style={{ display: 'grid', gap: 10 }}>
                 {aanbod.map((kaart) => {
                   const gekozen = form.plan === kaart.plan;
