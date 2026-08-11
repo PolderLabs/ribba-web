@@ -117,6 +117,7 @@ function verzoek(overrides = {}) {
       email: `nieuw-${Math.random().toString(36).slice(2)}@example.com`,
       phone: '0612345678', address: 'Teststraat 1', postal_code: '1234 AB',
       city: 'Teststad', kvk_number: '12345678',
+      legal_acceptances: { terms: '2026-07-v1', privacy: '2026-07-v1', dpa: '2026-08-v1' },
       ...overrides,
     }),
   };
@@ -278,4 +279,81 @@ test('een al betaalde registratie stuurt niemand opnieuw naar Checkout', async (
   assert.equal(res.status, 409);
   assert.match((await res.json()).error, /wordt afgerond/);
   assert.equal(sessies.length, 0, 'er is toch een tweede Checkout aangemaakt');
+});
+
+// ── Juridische akkoorden ────────────────────────────────────────────────────
+//
+// Het akkoord gaat vooraf aan het mandaat, en dat is precies wat je later wilt
+// kunnen laten zien. `legal_acceptances` eist een user_id die hier nog niet
+// bestaat, dus het reist mee op de pending-rij en wordt bij activatie
+// gematerialiseerd — met het OORSPRONKELIJKE moment.
+
+test('geen akkoorden → 400, geen pending rij en geen Checkout', async () => {
+  reset();
+  const res = await POST(verzoek({ legal_acceptances: undefined }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /akkoord/i);
+  assert.equal(ingevoegd.length, 0);
+  assert.equal(sessies.length, 0);
+});
+
+test('twee van de drie akkoorden is niet genoeg', async () => {
+  reset();
+  const res = await POST(verzoek({
+    legal_acceptances: { terms: '2026-07-v1', privacy: '2026-07-v1' },
+  }));
+  assert.equal(res.status, 400);
+  assert.equal(ingevoegd.length, 0);
+});
+
+test('een verouderde versie telt niet mee — de client is getuige, geen bron', async () => {
+  reset();
+  const res = await POST(verzoek({
+    legal_acceptances: { terms: '2020-01-v1', privacy: '2026-07-v1', dpa: '2026-08-v1' },
+  }));
+  assert.equal(res.status, 400);
+  assert.equal(ingevoegd.length, 0, 'er is toch een registratie met een oud akkoord gemaakt');
+});
+
+test('het akkoord komt op de pending rij, met moment, IP en user-agent', async () => {
+  reset();
+  const voor = Date.now();
+  await POST(verzoek());
+  const na = Date.now();
+
+  const akkoord = ingevoegd[0].rij.legal_acceptance;
+  assert.ok(akkoord, 'legal_acceptance ontbreekt op de pending rij');
+  assert.deepEqual(akkoord.documents, {
+    terms: '2026-07-v1', privacy: '2026-07-v1', dpa: '2026-08-v1',
+  });
+
+  // Het moment is dat van het formulier, niet van later.
+  const moment = Date.parse(akkoord.accepted_at);
+  assert.ok(moment >= voor && moment <= na, 'accepted_at ligt buiten het verzoekvenster');
+  assert.match(akkoord.accepted_at, /^\d{4}-\d{2}-\d{2}T/);
+
+  // IP en user-agent zijn aanwezig als velden; null mag, verzinnen niet.
+  assert.ok('ip_address' in akkoord);
+  assert.ok('user_agent' in akkoord);
+});
+
+test('de versies komen van de server, niet uit het verzoek', async () => {
+  reset();
+  // De client beweert een andere versiestring bij een bekend documenttype.
+  await POST(verzoek({
+    legal_acceptances: { terms: '2026-07-v1', privacy: '2026-07-v1', dpa: '2026-08-v1', extra: 'stiekem' },
+  }));
+  const docs = ingevoegd[0].rij.legal_acceptance.documents;
+  assert.deepEqual(Object.keys(docs).sort(), ['dpa', 'privacy', 'terms']);
+  assert.equal('extra' in docs, false, 'een onbekend document is meegeglipt');
+});
+
+test('het akkoord wordt vastgelegd vóór er een Checkout bestaat', async () => {
+  reset();
+  // G5 faalt ná de akkoordcontrole: er mag dan niets zijn geschreven.
+  prices.price_basic = { ...prices.price_basic, metadata: {} };
+  const res = await POST(verzoek());
+  assert.equal(res.status, 503);
+  assert.equal(ingevoegd.length, 0);
+  assert.equal(sessies.length, 0);
 });

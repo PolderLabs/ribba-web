@@ -15,15 +15,18 @@
 //   1. validatie          — vormfouten kosten geen Stripe-verkeer
 //   2. e-mail vrij?       — vóór het mandaat. Niemand geeft een machtiging af
 //                           voor een account dat niet kan bestaan.
-//   3. aanbod + G5        — vóór Checkout. Een Price zonder geldige
+//   3. akkoorden          — vóór het mandaat, want het akkoord gáát vooraf aan
+//                           de machtiging. Reist mee op de pending-rij en
+//                           wordt bij activatie gematerialiseerd.
+//   4. aanbod + G5        — vóór Checkout. Een Price zonder geldige
 //                           plan-metadata mag nooit een betaalpagina worden.
-//   4. pending registratie — het id gaat mee als metadata, zodat de webhook
+//   5. pending registratie — het id gaat mee als metadata, zodat de webhook
 //                           straks weet welke registratie hij afrondt.
-//   5. Checkout Session   — als laatste. Alles wat mis kan gaan, ging al mis.
+//   6. Checkout Session   — als laatste. Alles wat mis kan gaan, ging al mis.
 //
-// WAT ER NIET IN ZIT: webhookactivatie, mailflow, promocode. En geen
-// wachtwoord — het account ontstaat pas ná het mandaat, en de rijschool kiest
-// daarna zelf een wachtwoord via de set-wachtwoordmail.
+// WAT ER NIET IN ZIT: webhookactivatie en mailflow. En geen wachtwoord — het
+// account ontstaat pas ná het mandaat, en de rijschool kiest daarna zelf een
+// wachtwoord via de set-wachtwoordmail.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -40,6 +43,11 @@ import {
   requiresLegalName,
 } from '@/lib/country-profile';
 import { DOMAIN } from '@/lib/domains';
+import {
+  extractIpAddress,
+  extractUserAgent,
+  pickAcceptedVersions,
+} from '@/lib/legal-acceptances';
 import { isSignupPlan } from '@/lib/signup-plan';
 import { resolveSignupOffer } from '@/lib/signup-offer';
 import { maakOfferDeps } from '@/lib/signup-offer-deps';
@@ -72,6 +80,7 @@ export async function POST(request: NextRequest) {
       email, phone, address, postal_code, city, legal_name,
       billing_address, billing_postal_code, billing_city,
       kvk_number, btw_number, registration_slug, promo_code,
+      legal_acceptances: clientLegalVersions,
     } = body;
 
     // ── 1. Validatie ─────────────────────────────────────────────────────
@@ -119,7 +128,37 @@ export async function POST(request: NextRequest) {
       return fout('Er bestaat al een rijschool met dit e-mailadres. Log in of gebruik een ander adres.', 409);
     }
 
-    // ── 3. Aanbod OPNIEUW resolven + G5 ──────────────────────────────────
+    // ── 3. Juridische akkoorden ──────────────────────────────────────────
+    // Het akkoord ontstaat HIER, vóór het mandaat. Maar `legal_acceptances`
+    // eist een user_id en die bestaat pas na de betaling, dus het reist mee op
+    // de pending-registratie en wordt bij activatie gematerialiseerd.
+    //
+    // `pickAcceptedVersions` accepteert alleen versies die overeenkomen met
+    // wat we nú publiceren — de client is getuige, geen bron. Publiceer je een
+    // nieuwe versie terwijl iemand het formulier open heeft staan, dan krijgt
+    // hij een 400 en moet hij herladen. Dat is bewust: liever opnieuw vragen
+    // dan een akkoord vastleggen op een document dat hij niet zag.
+    const akkoorden = pickAcceptedVersions(clientLegalVersions, ['terms', 'privacy', 'dpa']);
+    if (akkoorden.length !== 3) {
+      return fout(
+        'Je moet akkoord gaan met de Algemene Voorwaarden, Privacyverklaring en Verwerkersovereenkomst.',
+      );
+    }
+
+    // Eén moment voor alle drie: het was één handeling, geen drie klikken.
+    // Dit moment, dit IP en deze user-agent reizen letterlijk mee naar
+    // `legal_acceptances`. Zou de activatie ze opnieuw bepalen, dan stond het
+    // tijdstip van de webhook en het IP van Stripe in de bewijstabel.
+    const legalAcceptance = {
+      accepted_at: new Date().toISOString(),
+      ip_address: extractIpAddress(request),
+      user_agent: extractUserAgent(request),
+      documents: Object.fromEntries(
+        akkoorden.map((a) => [a.document_type, a.document_version]),
+      ),
+    };
+
+    // ── 4. Aanbod OPNIEUW resolven + G5 ──────────────────────────────────
     // Bewust opnieuw, met exact dezelfde functie als `/api/signup/offer`.
     // Wat de browser eerder te zien kreeg is weergave, nooit invoer: bedragen
     // en trialdatum uit een client zijn een suggestie van iemand anders. Wat
@@ -149,7 +188,7 @@ export async function POST(request: NextRequest) {
     // gegeven. De inschrijving zelf gaat gewoon door, met het standaardaanbod.
     const toegepastePromocode = aanbod.trial?.viaPromocode ?? null;
 
-    // ── 4. Pending registratie ───────────────────────────────────────────
+    // ── 5. Pending registratie ───────────────────────────────────────────
     const rij = {
       plan,
       email: emailNorm,
@@ -171,6 +210,7 @@ export async function POST(request: NextRequest) {
       registration_slug: typeof registration_slug === 'string' && registration_slug.trim()
         ? registration_slug.trim() : null,
       promo_code: toegepastePromocode,
+      legal_acceptance: legalAcceptance,
       expires_at: new Date(Date.now() + PENDING_GELDIG_UREN * 3600_000).toISOString(),
     };
 
@@ -214,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
     const pendingId: string = gevondenId;
 
-    // ── 5. Checkout Session ──────────────────────────────────────────────
+    // ── 6. Checkout Session ──────────────────────────────────────────────
     // `trial_end` is een ABSOLUTE datum, geen aantal dagen. Daardoor is "1
     // maand gratis" een kalendermaand — 11 augustus wordt 11 september — en
     // niet een afronding op 30 dagen. De duur zelf komt uit de Price-metadata
