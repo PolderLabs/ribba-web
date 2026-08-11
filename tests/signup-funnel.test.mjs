@@ -18,6 +18,7 @@ import {
   NIEUWE_SIGNUP_ROUTE,
   ACTIEVE_SIGNUP_ROUTE,
   promoBeschikbaar,
+  wachtwoordBijInschrijven,
 } from '../lib/signup-funnel.ts';
 
 test('de actieve route is er één van de twee, niet iets anders', () => {
@@ -42,4 +43,26 @@ test('op de oude route kan de actiecode nooit aan staan', () => {
 
 test('de twee routes zijn verschillend — anders is de schakelaar betekenisloos', () => {
   assert.notEqual(OUDE_SIGNUP_ROUTE, NIEUWE_SIGNUP_ROUTE);
+});
+
+// ── Het wachtwoord ──────────────────────────────────────────────────────────
+//
+// Spiegelbeeld van de actiecode, en net zo hard: de oude route maakt het
+// account meteen aan en WEIGERT een inschrijving zonder wachtwoord. Zouden de
+// velden verdwijnen terwijl die route nog draait, dan is inschrijven
+// onmogelijk — een stillere maar ergere storing dan een verborgen actiecode.
+
+test('het wachtwoord wordt gevraagd dan en slechts dan als de oude route actief is', () => {
+  assert.equal(wachtwoordBijInschrijven, ACTIEVE_SIGNUP_ROUTE === OUDE_SIGNUP_ROUTE);
+});
+
+test('wachtwoord en actiecode sluiten elkaar uit — er is er altijd precies één', () => {
+  // Ze horen bij verschillende routes, dus nooit allebei aan of allebei uit.
+  assert.notEqual(wachtwoordBijInschrijven, promoBeschikbaar);
+});
+
+test('op de nieuwe route kan het wachtwoordveld nooit terugkomen', () => {
+  if (ACTIEVE_SIGNUP_ROUTE === NIEUWE_SIGNUP_ROUTE) {
+    assert.equal(wachtwoordBijInschrijven, false);
+  }
 });

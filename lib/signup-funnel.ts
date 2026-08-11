@@ -36,6 +36,20 @@ export const NIEUWE_SIGNUP_ROUTE = '/api/signup/start';
 export const ACTIEVE_SIGNUP_ROUTE: string = OUDE_SIGNUP_ROUTE;
 
 /**
+ * Vraagt de actieve route om een wachtwoord bij inschrijven?
+ *
+ * De oude route maakt het account meteen aan en EIST daarom een wachtwoord.
+ * De nieuwe route maakt het account pas na de betaling; de rijschool kiest
+ * daarna zelf een wachtwoord via de set-wachtwoordmail, en een wachtwoord in
+ * het formulier zou dan nergens heen gaan.
+ *
+ * Ook dit is afgeleid en niet los instelbaar: zouden de velden verdwijnen
+ * terwijl de oude route nog draait, dan weigert die met "alle verplichte
+ * velden" en is inschrijven onmogelijk.
+ */
+export const wachtwoordBijInschrijven = ACTIEVE_SIGNUP_ROUTE === OUDE_SIGNUP_ROUTE;
+
+/**
  * Mag het formulier een actiecode aanbieden?
  *
  * Alleen wanneer de actieve route hem ook daadwerkelijk kan honoreren. Niet

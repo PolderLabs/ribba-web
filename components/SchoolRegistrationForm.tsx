@@ -4,7 +4,11 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
 // De actiecode is zichtbaar zodra — en alleen zodra — de route hem kan
 // honoreren. Afgeleid, niet los instelbaar. Zie lib/signup-funnel.ts.
-import { ACTIEVE_SIGNUP_ROUTE, promoBeschikbaar } from '@/lib/signup-funnel';
+import {
+  ACTIEVE_SIGNUP_ROUTE,
+  promoBeschikbaar,
+  wachtwoordBijInschrijven,
+} from '@/lib/signup-funnel';
 
 // Het aanbod komt SERVER-SIDE uit Stripe, niet uit een lijst in deze
 // component. Een wijziging van €25 → €30 of van 1 → 3 maanden gratis moet
@@ -254,16 +258,20 @@ export default function SchoolRegistrationForm() {
       e.btw_number = `Ongeldig BTW-nummer (bijv. ${profile.vat.placeholder})`;
     }
 
-    if (!form.password) {
-      e.password = 'Wachtwoord is verplicht';
-    } else if (form.password.length < 8) {
-      e.password = 'Wachtwoord moet minimaal 8 tekens zijn';
-    }
+    // Alleen de oude route maakt het account meteen aan en heeft dus een
+    // wachtwoord nodig. Zie lib/signup-funnel.ts.
+    if (wachtwoordBijInschrijven) {
+      if (!form.password) {
+        e.password = 'Wachtwoord is verplicht';
+      } else if (form.password.length < 8) {
+        e.password = 'Wachtwoord moet minimaal 8 tekens zijn';
+      }
 
-    if (!form.password_confirm) {
-      e.password_confirm = 'Bevestig je wachtwoord';
-    } else if (form.password !== form.password_confirm) {
-      e.password_confirm = 'Wachtwoorden komen niet overeen';
+      if (!form.password_confirm) {
+        e.password_confirm = 'Bevestig je wachtwoord';
+      } else if (form.password !== form.password_confirm) {
+        e.password_confirm = 'Wachtwoorden komen niet overeen';
+      }
     }
 
     if (!form.terms_accepted) {
@@ -316,8 +324,11 @@ export default function SchoolRegistrationForm() {
           ...(promoBeschikbaar && codeToegepast ? { promo_code: codeToegepast } : {}),
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
-          password: form.password,
-          password_confirm: form.password_confirm,
+          // De nieuwe route kent geen wachtwoord; meesturen zou het stil
+          // laten vallen en de indruk wekken dat het iets doet.
+          ...(wachtwoordBijInschrijven
+            ? { password: form.password, password_confirm: form.password_confirm }
+            : {}),
           legal_acceptances: {
             terms: LEGAL_VERSIONS.terms,
             privacy: LEGAL_VERSIONS.privacy,
@@ -827,33 +838,52 @@ export default function SchoolRegistrationForm() {
           {errors.last_name && <p className="form-error">{errors.last_name}</p>}
         </div>
 
-        {/* Wachtwoord */}
-        <div className="form-group">
-          <label htmlFor="password">Wachtwoord</label>
-          <input
-            id="password"
-            type="password"
-            placeholder="Minimaal 8 tekens"
-            className={errors.password ? 'error' : ''}
-            value={form.password}
-            onChange={(e) => handleChange('password', e.target.value)}
-          />
-          {errors.password && <p className="form-error">{errors.password}</p>}
-        </div>
+        {/* Wachtwoord — alleen bij de oude route, die het account meteen
+            aanmaakt. Bij de nieuwe route ontstaat het account pas ná de
+            betaling en kiest de rijschool zelf een wachtwoord via de mail. */}
+        {wachtwoordBijInschrijven ? (
+          <>
+          {/* Wachtwoord */}
+          <div className="form-group">
+            <label htmlFor="password">Wachtwoord</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="Minimaal 8 tekens"
+              className={errors.password ? 'error' : ''}
+              value={form.password}
+              onChange={(e) => handleChange('password', e.target.value)}
+            />
+            {errors.password && <p className="form-error">{errors.password}</p>}
+          </div>
 
-        {/* Bevestig wachtwoord */}
-        <div className="form-group">
-          <label htmlFor="password_confirm">Bevestig wachtwoord</label>
-          <input
-            id="password_confirm"
-            type="password"
-            placeholder="Herhaal wachtwoord"
-            className={errors.password_confirm ? 'error' : ''}
-            value={form.password_confirm}
-            onChange={(e) => handleChange('password_confirm', e.target.value)}
-          />
-          {errors.password_confirm && <p className="form-error">{errors.password_confirm}</p>}
-        </div>
+          {/* Bevestig wachtwoord */}
+          <div className="form-group">
+            <label htmlFor="password_confirm">Bevestig wachtwoord</label>
+            <input
+              id="password_confirm"
+              type="password"
+              placeholder="Herhaal wachtwoord"
+              className={errors.password_confirm ? 'error' : ''}
+              value={form.password_confirm}
+              onChange={(e) => handleChange('password_confirm', e.target.value)}
+            />
+            {errors.password_confirm && <p className="form-error">{errors.password_confirm}</p>}
+          </div>
+          </>
+        ) : (
+          <div className="form-group full-width">
+            <p style={{
+              margin: 0, fontSize: 14, color: '#57534E', lineHeight: 1.5,
+              background: '#F8FAFC', border: '1px solid #E7E5E4',
+              borderRadius: 10, padding: '12px 14px',
+            }}>
+              <strong>Je kiest straks zelf een wachtwoord.</strong> Zodra je
+              inschrijving rond is, sturen we je een e-mail met een link om er
+              een in te stellen.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Legal acceptances — 3 aparte checkboxes voor juridische traceerbaarheid */}
