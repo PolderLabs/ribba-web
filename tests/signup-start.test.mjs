@@ -22,6 +22,8 @@ let tabellen = {};
 let ingevoegd = [];
 let sessies = [];
 let prices = {};
+let promoRijen = {};
+let promoAanroepen = [];
 
 mock.module('next/server', {
   namedExports: {
@@ -34,6 +36,13 @@ mock.module('@/lib/rate-limit', { namedExports: { rateLimit: () => true } });
 mock.module('@supabase/supabase-js', {
   namedExports: {
     createClient: () => ({
+      // Spiegelt `validate_promo_code`: geldig of niet, zonder reden.
+      async rpc(naam, args) {
+        promoAanroepen.push({ naam, args });
+        const rij = promoRijen[args?.p_code];
+        if (!rij) return { data: { valid: false }, error: null };
+        return { data: { valid: true, code: args.p_code, stripe_trial_interval: rij }, error: null };
+      },
       from(tabel) {
         const api = {
           _filters: {},
@@ -76,11 +85,27 @@ mock.module('@/lib/stripe', {
 const { POST } = await import('../app/api/signup/start/route.ts');
 
 function reset() {
-  tabellen = {}; ingevoegd = []; sessies = [];
+  tabellen = {}; ingevoegd = []; sessies = []; promoAanroepen = [];
+  promoRijen = { STARTGRATIS: '6 mons' };
   prices = {
-    price_basic:   { id: 'price_basic',   active: true, recurring: { interval: 'month' }, metadata: { plan: 'basic' } },
-    price_premium: { id: 'price_premium', active: true, recurring: { interval: 'month' }, metadata: { plan: 'premium' } },
+    price_basic: {
+      id: 'price_basic', active: true, currency: 'eur',
+      recurring: { interval: 'month' }, unit_amount: 2500, tax_behavior: 'exclusive',
+      metadata: { plan: 'basic', trial_interval: '1 month' },
+    },
+    price_premium: {
+      id: 'price_premium', active: true, currency: 'eur',
+      recurring: { interval: 'month' }, unit_amount: 4500, tax_behavior: 'exclusive',
+      metadata: { plan: 'premium', trial_interval: '1 month' },
+    },
   };
+}
+
+/** Hoeveel maanden zit er tussen nu en de trial_end die Checkout kreeg? */
+function maandenTot(unix) {
+  const nu = new Date();
+  const eind = new Date(unix * 1000);
+  return (eind.getUTCFullYear() - nu.getUTCFullYear()) * 12 + (eind.getUTCMonth() - nu.getUTCMonth());
 }
 
 function verzoek(overrides = {}) {
@@ -158,16 +183,69 @@ test('G5: een verwisselde secret levert nooit een betaalpagina op', async () => 
   assert.equal(sessies.length, 0);
 });
 
-test('de Checkout krijgt de trialduur uit Stripe, niet uit Ribba', async () => {
+test('de Checkout krijgt een absolute trial_end, geen aantal dagen', async () => {
   reset();
-  prices.price_basic = { ...prices.price_basic, metadata: { plan: 'basic', trial_days: '30' } };
   await POST(verzoek());
-  assert.equal(sessies[0].subscription_data.trial_period_days, 30);
+  const sd = sessies[0].subscription_data;
+  // Nooit meer dagen: dat maakte van een maand een afronding op 30.
+  assert.equal('trial_period_days' in sd, false);
+  assert.equal(typeof sd.trial_end, 'number');
+  assert.equal(maandenTot(sd.trial_end), 1, 'één kalendermaand vooruit');
 
   reset();
-  // Zonder trial_days: geldig aanbod, direct betalen — geen verzonnen default.
+  // Zonder trial_interval: geldig aanbod, direct betalen — geen verzonnen default.
+  prices.price_basic = { ...prices.price_basic, metadata: { plan: 'basic' } };
   await POST(verzoek());
-  assert.equal('trial_period_days' in sessies[0].subscription_data, false);
+  assert.equal('trial_end' in sessies[0].subscription_data, false);
+});
+
+test('STARTGRATIS verlengt de trial én wordt op de registratie vastgelegd', async () => {
+  reset();
+  await POST(verzoek({ promo_code: 'startgratis' }));
+
+  assert.equal(maandenTot(sessies[0].subscription_data.trial_end), 6);
+  assert.equal(ingevoegd[0].rij.promo_code, 'STARTGRATIS');
+  assert.equal(sessies[0].subscription_data.metadata.promo_code, 'STARTGRATIS');
+});
+
+test('een ongeldige code wordt NIET vastgelegd en verandert het aanbod niet', async () => {
+  reset();
+  const res = await POST(verzoek({ promo_code: 'BESTAATNIET' }));
+
+  // De inschrijving gaat gewoon door — een typefout blokkeert niemand.
+  assert.equal(res.status, 200);
+  // Maar er staat geen campagne op de registratie die nooit is gegeven.
+  assert.equal(ingevoegd[0].rij.promo_code, null);
+  assert.equal('promo_code' in sessies[0].subscription_data.metadata, false);
+  // En het standaardaanbod geldt.
+  assert.equal(maandenTot(sessies[0].subscription_data.trial_end), 1);
+});
+
+test('het aanbod wordt server-side opnieuw bepaald, niet uit het verzoek gelezen', async () => {
+  reset();
+  // De browser beweert van alles over bedrag en duur. Het mag niets doen.
+  await POST(verzoek({
+    trial_end: 99999999999, trial_period_days: 3650,
+    bedragCenten: 1, amount: 1, vandaagVerschuldigdCenten: 999,
+  }));
+
+  const sd = sessies[0].subscription_data;
+  assert.equal(maandenTot(sd.trial_end), 1, 'de client heeft de trial beïnvloed');
+  assert.notEqual(sd.trial_end, 99999999999);
+  assert.equal('trial_period_days' in sd, false);
+  // En de Price komt nog steeds uit het secret, niet uit de body.
+  assert.equal(sessies[0].line_items[0].price, 'price_basic');
+});
+
+test('de promotabel wordt alleen geraadpleegd als er een code is ingevuld', async () => {
+  reset();
+  await POST(verzoek());
+  assert.equal(promoAanroepen.length, 0);
+
+  reset();
+  await POST(verzoek({ promo_code: 'STARTGRATIS' }));
+  assert.equal(promoAanroepen.length, 1);
+  assert.equal(promoAanroepen[0].args.p_code, 'STARTGRATIS');
 });
 
 test('de pending-registratie-id gaat mee als metadata naar Stripe', async () => {

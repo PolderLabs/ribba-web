@@ -42,7 +42,7 @@ import {
 import { DOMAIN } from '@/lib/domains';
 import { isSignupPlan } from '@/lib/signup-plan';
 import { resolveSignupOffer } from '@/lib/signup-offer';
-import { getStripe } from '@/lib/stripe';
+import { maakOfferDeps } from '@/lib/signup-offer-deps';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       plan, legal_form, country_code, school_name, first_name, last_name,
       email, phone, address, postal_code, city, legal_name,
       billing_address, billing_postal_code, billing_city,
-      kvk_number, btw_number, registration_slug,
+      kvk_number, btw_number, registration_slug, promo_code,
     } = body;
 
     // ── 1. Validatie ─────────────────────────────────────────────────────
@@ -119,16 +119,21 @@ export async function POST(request: NextRequest) {
       return fout('Er bestaat al een rijschool met dit e-mailadres. Log in of gebruik een ander adres.', 409);
     }
 
-    // ── 3. Aanbod ophalen + G5 ───────────────────────────────────────────
-    let stripe: ReturnType<typeof getStripe>;
+    // ── 3. Aanbod OPNIEUW resolven + G5 ──────────────────────────────────
+    // Bewust opnieuw, met exact dezelfde functie als `/api/signup/offer`.
+    // Wat de browser eerder te zien kreeg is weergave, nooit invoer: bedragen
+    // en trialdatum uit een client zijn een suggestie van iemand anders. Wat
+    // hier uitkomt is wat naar Checkout gaat.
+    let deps: ReturnType<typeof maakOfferDeps>;
     try {
-      stripe = getStripe();
+      deps = maakOfferDeps();
     } catch {
       console.error('signup/start: STRIPE_SECRET_KEY ontbreekt');
       return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.app.', 503);
     }
+    const stripe = deps.stripe;
 
-    const aanbod = await resolveSignupOffer(stripe, plan);
+    const aanbod = await resolveSignupOffer(deps, plan, { promoCode: promo_code });
     if (!aanbod.ok) {
       // G5. Nooit doorlaten naar een betaalpagina: dan betaalt iemand voor een
       // aanbod waar wij geen rechten aan kunnen koppelen.
@@ -136,6 +141,13 @@ export async function POST(request: NextRequest) {
       return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.app.', 503,
         { reason: aanbod.reason });
     }
+
+    // Alleen een code die de resolver DAADWERKELIJK heeft toegepast telt. Een
+    // onbekende, verlopen of uitgeputte code komt hier als `null` uit en mag
+    // niet als gebruikte campagne op de registratie belanden — anders staat er
+    // straks een inwisseling geregistreerd voor een aanbod dat nooit is
+    // gegeven. De inschrijving zelf gaat gewoon door, met het standaardaanbod.
+    const toegepastePromocode = aanbod.trial?.viaPromocode ?? null;
 
     // ── 4. Pending registratie ───────────────────────────────────────────
     const rij = {
@@ -158,6 +170,7 @@ export async function POST(request: NextRequest) {
       billing_city: useBilling ? billingRaw[2] : null,
       registration_slug: typeof registration_slug === 'string' && registration_slug.trim()
         ? registration_slug.trim() : null,
+      promo_code: toegepastePromocode,
       expires_at: new Date(Date.now() + PENDING_GELDIG_UREN * 3600_000).toISOString(),
     };
 
@@ -202,8 +215,11 @@ export async function POST(request: NextRequest) {
     const pendingId: string = gevondenId;
 
     // ── 5. Checkout Session ──────────────────────────────────────────────
-    // De trialduur komt uit Stripe en wordt hier alleen doorgegeven. Ontbreekt
-    // hij, dan is dat een geldig aanbod: direct betalen.
+    // `trial_end` is een ABSOLUTE datum, geen aantal dagen. Daardoor is "1
+    // maand gratis" een kalendermaand — 11 augustus wordt 11 september — en
+    // niet een afronding op 30 dagen. De duur zelf komt uit de Price-metadata
+    // of uit de promocode; hier wordt hij alleen doorgegeven.
+    // Ontbreekt hij, dan is dat een geldig aanbod: direct betalen.
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: aanbod.priceId, quantity: 1 }],
@@ -212,8 +228,11 @@ export async function POST(request: NextRequest) {
       customer_email: emailNorm,
       client_reference_id: pendingId,
       subscription_data: {
-        ...(aanbod.trialDays ? { trial_period_days: aanbod.trialDays } : {}),
-        metadata: { pending_registration_id: pendingId },
+        ...(aanbod.trial ? { trial_end: aanbod.trial.trialEndUnix } : {}),
+        metadata: {
+          pending_registration_id: pendingId,
+          ...(toegepastePromocode ? { promo_code: toegepastePromocode } : {}),
+        },
       },
       metadata: { pending_registration_id: pendingId },
       success_url: `${DOMAIN.account}/registreren/ontvangen`,

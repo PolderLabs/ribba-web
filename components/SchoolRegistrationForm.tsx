@@ -8,15 +8,34 @@ import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
 // zichtbaar worden zonder codewijziging. Zou de prijs hier staan, dan hadden
 // we dezelfde dubbele waarheid als een price-id-mapping — alleen in
 // marketingtekst, waar hij nog moeilijker te vinden is.
+//
+// DEZE COMPONENT REKENT NIETS. Bedragen, btw, "vandaag €0", de zin
+// "6 maanden gratis" en de datum van de eerste incasso komen alle vijf van de
+// server. Hier stond eerder een `gratisPeriode(dagen)` die uit `30` de tekst
+// "1 maand gratis" maakte — dat was een tweede plek waar het aanbod ontstond,
+// en hij zou stilzwijgend gaan liegen zodra de duur een echte kalendermaand
+// werd in plaats van 30 dagen.
 type AanbodKaart = {
   plan: SignupPlan;
   naam: string;
   samenvatting: string;
   punten: string[];
-  bedragCenten: number;
-  valuta: string;
-  interval: string;
-  gratisDagen: number | null;
+  bedragen: {
+    nettoCenten: number;
+    btwCenten: number;
+    brutoCenten: number;
+    btwTariefPercent: number;
+    valuta: string;
+    interval: string;
+  };
+  /** 0 tijdens een gratis periode. Hoort visueel het prominentst. */
+  vandaagVerschuldigdCenten: number;
+  /** null = geldig aanbod zonder gratis periode. */
+  trial: {
+    tekst: string;
+    eersteIncassoISO: string;
+    viaPromocode: string | null;
+  } | null;
 };
 
 function bedrag(centen: number, valuta: string): string {
@@ -24,13 +43,9 @@ function bedrag(centen: number, valuta: string): string {
     .format(centen / 100);
 }
 
-function gratisPeriode(dagen: number | null): string | null {
-  if (!dagen) return null;
-  if (dagen % 30 === 0 && dagen >= 30) {
-    const m = dagen / 30;
-    return m === 1 ? '1 maand gratis' : `${m} maanden gratis`;
-  }
-  return `${dagen} dagen gratis`;
+function datum(iso: string): string {
+  return new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+    .format(new Date(iso));
 }
 import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
@@ -373,7 +388,8 @@ export default function SchoolRegistrationForm() {
               <div style={{ display: 'grid', gap: 10 }}>
                 {aanbod.map((kaart) => {
                   const gekozen = form.plan === kaart.plan;
-                  const gratis = gratisPeriode(kaart.gratisDagen);
+                  const gratis = kaart.trial?.tekst ?? null;
+                  const { bedragen } = kaart;
                   return (
                     <label
                       key={kaart.plan}
@@ -399,15 +415,29 @@ export default function SchoolRegistrationForm() {
                             {gratis}
                           </span>
                         )}
+                        {/* Netto prominent: dat is de commerciële prijs die we
+                            communiceren, en de rijschool is btw-plichtig. */}
                         <span style={{ display: 'block', fontSize: 14, color: '#57534E' }}>
-                          {gratis ? 'Daarna ' : ''}{bedrag(kaart.bedragCenten, kaart.valuta)} per maand
+                          {gratis ? 'Daarna ' : ''}{bedrag(bedragen.nettoCenten, bedragen.valuta)} per maand
+                          {' '}excl. btw
                         </span>
+                        {/* Bruto eronder, zodat niemand bij Checkout schrikt. */}
+                        <span style={{ display: 'block', fontSize: 13, color: '#78716C' }}>
+                          {bedrag(bedragen.brutoCenten, bedragen.valuta)} incl. btw
+                        </span>
+                        {kaart.trial && (
+                          <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 2 }}>
+                            Eerste incasso op {datum(kaart.trial.eersteIncassoISO)}
+                          </span>
+                        )}
                         <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 4 }}>
                           {kaart.punten.join(' · ')}
                         </span>
                       </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: gratis ? '#15803D' : '#57534E', whiteSpace: 'nowrap' }}>
-                        {gratis ? 'Vandaag €0' : `Vandaag ${bedrag(kaart.bedragCenten, kaart.valuta)}`}
+                      <span style={{ fontSize: 15, fontWeight: 700, color: gratis ? '#15803D' : '#57534E', whiteSpace: 'nowrap' }}>
+                        {kaart.vandaagVerschuldigdCenten === 0
+                          ? 'Vandaag €0'
+                          : `Vandaag ${bedrag(kaart.vandaagVerschuldigdCenten, bedragen.valuta)}`}
                       </span>
                     </label>
                   );
