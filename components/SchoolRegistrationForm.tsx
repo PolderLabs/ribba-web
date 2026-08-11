@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { SIGNUP_PLANS, type SignupPlan } from '@/lib/signup-plan';
 
 // Het aanbod komt SERVER-SIDE uit Stripe, niet uit een lijst in deze
@@ -145,18 +145,40 @@ export default function SchoolRegistrationForm() {
   const [aanbodFout, setAanbodFout] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
-  useEffect(() => {
-    let afgebroken = false;
-    fetch('/api/signup/offer')
-      .then((r) => r.json())
-      .then((d) => {
-        if (afgebroken) return;
-        if (d?.beschikbaar && Array.isArray(d.kaarten)) setAanbod(d.kaarten);
-        else setAanbodFout(true);
-      })
-      .catch(() => { if (!afgebroken) setAanbodFout(true); });
-    return () => { afgebroken = true; };
+  // ── Actiecode ────────────────────────────────────────────────────────────
+  // Wat de code doet met het aanbod bepaalt de SERVER, met dezelfde resolver
+  // die Checkout straks voedt. Deze component stuurt alleen de tekst op en
+  // toont wat er terugkomt. Hier wordt niets afgeleid uit "STARTGRATIS" en
+  // niets uitgerekend — anders ontstaat er weer een tweede plek waar een
+  // aanbod ontstaat, en die gaat een keer afwijken van wat er geïncasseerd
+  // wordt.
+  const [codeInvoer, setCodeInvoer] = useState('');
+  /** De code die de server heeft geaccepteerd. Alleen deze telt. */
+  const [codeToegepast, setCodeToegepast] = useState<string | null>(null);
+  const [codeGeweigerd, setCodeGeweigerd] = useState(false);
+  const [codeBezig, setCodeBezig] = useState(false);
+
+  const haalAanbod = useCallback(async (code: string | null) => {
+    setCodeBezig(true);
+    try {
+      const url = code ? `/api/signup/offer?code=${encodeURIComponent(code)}` : '/api/signup/offer';
+      const d = await (await fetch(url)).json();
+      if (d?.beschikbaar && Array.isArray(d.kaarten)) {
+        setAanbod(d.kaarten);
+        setAanbodFout(false);
+        setCodeToegepast(d.promoToegepast ?? null);
+        setCodeGeweigerd(Boolean(d.promoGeweigerd));
+      } else {
+        setAanbodFout(true);
+      }
+    } catch {
+      setAanbodFout(true);
+    } finally {
+      setCodeBezig(false);
+    }
   }, []);
+
+  useEffect(() => { void haalAanbod(null); }, [haalAanbod]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -281,6 +303,11 @@ export default function SchoolRegistrationForm() {
           billing_postal_code: useBilling ? normalizePostcode(form.billing_postal_code) : null,
           billing_city: useBilling ? form.billing_city : null,
           plan: form.plan,
+          // Alleen de code die de server heeft geaccepteerd. Wat de bezoeker
+          // heeft ingetypt maar geweigerd is, gaat niet mee — de server
+          // valideert straks toch opnieuw, maar het is geen data die we
+          // hoeven te versturen om daarna te laten vallen.
+          promo_code: codeToegepast,
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
           password: form.password,
@@ -385,6 +412,82 @@ export default function SchoolRegistrationForm() {
               <p style={{ margin: '0 0 12px', fontSize: 14, color: '#57534E', lineHeight: 1.5 }}>
                 Je kunt later altijd naar Premium overstappen.
               </p>
+
+              {/* Actiecode. Bewust bóven de kaarten: je ziet meteen wat hij doet. */}
+              <div style={{ marginBottom: 14 }}>
+                {codeToegepast ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                    background: '#F0FDF4', border: '1px solid #BBF7D0',
+                    borderRadius: 8, padding: '10px 12px',
+                  }}>
+                    <span style={{ fontSize: 14, color: '#15803D', fontWeight: 600 }}>
+                      Code {codeToegepast} toegepast
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setCodeInvoer(''); void haalAanbod(null); }}
+                      style={{
+                        marginLeft: 'auto', background: 'none', border: 0, padding: 0,
+                        fontSize: 13, color: '#57534E', textDecoration: 'underline', cursor: 'pointer',
+                      }}
+                    >
+                      Verwijderen
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <label htmlFor="promo_code" style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>
+                      Actiecode <span style={{ color: '#78716C' }}>(optioneel)</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        id="promo_code"
+                        type="text"
+                        value={codeInvoer}
+                        autoComplete="off"
+                        placeholder="Bijvoorbeeld STARTGRATIS"
+                        onChange={(e) => { setCodeInvoer(e.target.value); setCodeGeweigerd(false); }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          // Anders verstuurt Enter het hele formulier.
+                          e.preventDefault();
+                          if (codeInvoer.trim()) void haalAanbod(codeInvoer.trim());
+                        }}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <button
+                        type="button"
+                        disabled={codeBezig || !codeInvoer.trim()}
+                        onClick={() => void haalAanbod(codeInvoer.trim())}
+                        style={{
+                          padding: '0 16px', borderRadius: 8, border: '1px solid #D6D3D1',
+                          background: '#FFFFFF', fontSize: 14, fontWeight: 600,
+                          cursor: codeBezig || !codeInvoer.trim() ? 'default' : 'pointer',
+                          opacity: codeBezig || !codeInvoer.trim() ? 0.5 : 1, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {codeBezig ? 'Bezig…' : 'Toepassen'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {codeGeweigerd && (
+                  // Nooit stil terugvallen: wie een code intypt moet horen dát
+                  // hij niet geldt, én wat er dan wél geldt. Doorgaan mag —
+                  // een verkeerd getypte code hoort niemand tegen te houden.
+                  <p style={{ margin: '8px 0 0', fontSize: 14, color: '#B91C1C', lineHeight: 1.5 }}>
+                    Deze code is niet geldig, verlopen of al gebruikt.{' '}
+                    <span style={{ color: '#57534E' }}>
+                      {aanbod[0]?.trial
+                        ? `Het standaardaanbod geldt: ${aanbod[0].trial.tekst}.`
+                        : 'Het standaardaanbod geldt.'}
+                      {' '}Je kunt gewoon doorgaan.
+                    </span>
+                  </p>
+                )}
+              </div>
               <div style={{ display: 'grid', gap: 10 }}>
                 {aanbod.map((kaart) => {
                   const gekozen = form.plan === kaart.plan;
@@ -410,9 +513,13 @@ export default function SchoolRegistrationForm() {
                       />
                       <span style={{ flex: 1 }}>
                         <strong style={{ display: 'block' }}>{kaart.naam}</strong>
-                        {gratis && (
+                        {kaart.trial && (
+                          // Mét einddatum, bewust. Stripe's eigen betaalpagina
+                          // rekent de kop altijd om naar dagen — "183 dagen
+                          // gratis" waar wij "6 maanden" zeggen. De datum is
+                          // het herkenningspunt dat op beide schermen gelijk is.
                           <span style={{ display: 'block', fontSize: 14, color: '#15803D', fontWeight: 600 }}>
-                            {gratis}
+                            {kaart.trial.tekst}, tot {datum(kaart.trial.eersteIncassoISO)}
                           </span>
                         )}
                         {/* Netto prominent: dat is de commerciële prijs die we
@@ -425,11 +532,6 @@ export default function SchoolRegistrationForm() {
                         <span style={{ display: 'block', fontSize: 13, color: '#78716C' }}>
                           {bedrag(bedragen.brutoCenten, bedragen.valuta)} incl. btw
                         </span>
-                        {kaart.trial && (
-                          <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 2 }}>
-                            Eerste incasso op {datum(kaart.trial.eersteIncassoISO)}
-                          </span>
-                        )}
                         <span style={{ display: 'block', fontSize: 13, color: '#78716C', marginTop: 4 }}>
                           {kaart.punten.join(' · ')}
                         </span>
