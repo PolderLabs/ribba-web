@@ -357,3 +357,49 @@ test('het akkoord wordt vastgelegd vóór er een Checkout bestaat', async () => 
   assert.equal(ingevoegd.length, 0);
   assert.equal(sessies.length, 0);
 });
+
+// ── Marketingherkomst ───────────────────────────────────────────────────────
+//
+// De school bestaat hier nog niet, dus de herkomst reist mee op de pending-rij
+// en wordt bij activatie doorgezet. Dezelfde sanitizer als de oude route: geen
+// tweede definitie van wat een geldige herkomst is.
+
+test('de herkomst komt gesanitized op de pending rij', async () => {
+  reset();
+  await POST(verzoek({
+    attribution: {
+      utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'rijschool-planner',
+      referrer: 'https://www.google.com/', landing_page: '/pro',
+      captured_at: '2026-08-10T14:22:01.000Z',
+    },
+  }));
+  assert.deepEqual(ingevoegd[0].rij.signup_attribution, {
+    utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'rijschool-planner',
+    referrer: 'https://www.google.com/', landing_page: '/pro',
+    captured_at: '2026-08-10T14:22:01.000Z',
+  });
+});
+
+test('geen herkomst is geldig en blokkeert niets', async () => {
+  reset();
+  const res = await POST(verzoek());
+  assert.equal(res.status, 200);
+  assert.equal(ingevoegd[0].rij.signup_attribution, null);
+});
+
+test('onbekende velden komen de database niet in', async () => {
+  reset();
+  await POST(verzoek({
+    attribution: { utm_source: 'google', kwaadaardig: 'x', wachtwoord: 'geheim' },
+  }));
+  assert.deepEqual(ingevoegd[0].rij.signup_attribution, { utm_source: 'google' });
+});
+
+test('rommel in attribution levert null op, geen fout', async () => {
+  for (const rommel of ['tekst', 42, [], { utm_source: 123 }]) {
+    reset();
+    const res = await POST(verzoek({ attribution: rommel }));
+    assert.equal(res.status, 200, `geweigerd op ${JSON.stringify(rommel)}`);
+    assert.equal(ingevoegd[0].rij.signup_attribution, null);
+  }
+});

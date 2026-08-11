@@ -48,6 +48,7 @@ import {
   extractUserAgent,
   pickAcceptedVersions,
 } from '@/lib/legal-acceptances';
+import { sanitizeSignupAttribution } from '@/lib/signup-attribution';
 import { isSignupPlan } from '@/lib/signup-plan';
 import { resolveSignupOffer } from '@/lib/signup-offer';
 import { maakOfferDeps } from '@/lib/signup-offer-deps';
@@ -82,6 +83,12 @@ export async function POST(request: NextRequest) {
       kvk_number, btw_number, registration_slug, promo_code,
       legal_acceptances: clientLegalVersions,
     } = body;
+
+    // Herkomst-attributie (utm/referrer/landing) — untrusted client-input,
+    // server-side gewhitelist door dezelfde sanitizer als de oude route.
+    // Best-effort: mag een registratie nooit tegenhouden, en `null` is een
+    // geldige uitkomst voor wie rechtstreeks binnenkwam.
+    const signupAttribution = sanitizeSignupAttribution(body.attribution);
 
     // ── 1. Validatie ─────────────────────────────────────────────────────
     if (!isSignupPlan(plan)) return fout('Kies een abonnement (Basic of Premium).');
@@ -211,6 +218,7 @@ export async function POST(request: NextRequest) {
         ? registration_slug.trim() : null,
       promo_code: toegepastePromocode,
       legal_acceptance: legalAcceptance,
+      signup_attribution: signupAttribution,
       expires_at: new Date(Date.now() + PENDING_GELDIG_UREN * 3600_000).toISOString(),
     };
 
