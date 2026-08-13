@@ -2,20 +2,15 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import RibbaLogo from '../../components/RibbaLogo';
 import { StoreBadges } from '../../components/StoreBadges';
+import {
+  bepaalJoinUitkomst,
+  type InviteWeergave,
+  type ResolveTreffer,
+  type SchoolTreffer,
+} from '../../../lib/join-resolver';
 
 type Props = {
   params: Promise<{ code: string }>;
-};
-
-type InviteLink = {
-  id: string;
-  code: string;
-  drivingschool_id: string;
-  instructor_id: string | null;
-  is_multi_use: boolean;
-  used: boolean;
-  expires_at: string | null;
-  drivingschools: { registration_slug: string; name: string } | null;
 };
 
 async function supabaseGet<T>(path: string): Promise<T | null> {
@@ -35,6 +30,56 @@ async function supabaseGet<T>(path: string): Promise<T | null> {
   return res.json();
 }
 
+/**
+ * Vraagt de database welke uitnodiging bij deze invoer hoort.
+ *
+ * Bewust met de anon-sleutel: `resolve_invite` is als publieke lookup gebouwd
+ * (SECURITY DEFINER, `anon` heeft EXECUTE, retourneert alleen de canonieke
+ * code plus één boolean). Hij kwam er toen migratie 20260802230000
+ * `invitation_links` bij `anon` weghaalde, omdat de tabel opsombaar was
+ * inclusief e-mailadressen. Die smalle poort gebruiken we hier dus zoals
+ * bedoeld — de service-role-sleutel hoort niet bij een beslissing die ook
+ * anoniem genomen mag worden.
+ *
+ * Accepteert zowel een uitnodigingscode (in welke schrijfwijze dan ook) als de
+ * registratie-slug van een school, en geeft de code terug zoals die in de
+ * database staat.
+ */
+async function resolveInvite(input: string): Promise<ResolveTreffer | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return null;
+
+  const res = await fetch(`${supabaseUrl}/rest/v1/rpc/resolve_invite`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p_input: input.trim() }),
+    next: { revalidate: 0 },
+  });
+
+  if (!res.ok) return null;
+  const rows = (await res.json()) as { code?: string }[] | null;
+  const code = Array.isArray(rows) ? rows[0]?.code : undefined;
+  return code ? { code } : null;
+}
+
+/**
+ * Haalt op wat de pagina moet tónen. Nooit om te beslissen — dat deed
+ * `resolve_invite` al — en daarom op de exacte, canonieke code. Geen
+ * `toUpperCase()`, geen aanname over schrijfwijze: de code komt hier
+ * rechtstreeks uit de database vandaan.
+ */
+async function fetchInviteWeergave(canoniekeCode: string): Promise<InviteWeergave | null> {
+  const rows = await supabaseGet<InviteWeergave[]>(
+    `invitation_links?code=eq.${encodeURIComponent(canoniekeCode)}&select=is_multi_use,drivingschools(registration_slug,name)&limit=1`,
+  );
+  return rows?.[0] ?? null;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { code } = await params;
 
@@ -48,12 +93,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (schools && schools.length > 0) {
     schoolName = schools[0].name;
   } else {
-    // 2. Match op invitation_links.code
-    const invites = await supabaseGet<{ drivingschools: { name: string } | null }[]>(
-      `invitation_links?code=eq.${encodeURIComponent(code.toUpperCase())}&select=drivingschools(name)&limit=1`,
-    );
-    if (invites && invites[0]?.drivingschools?.name) {
-      schoolName = invites[0].drivingschools.name;
+    // 2. Via resolve_invite naar de canonieke code, en pas dán de naam ophalen.
+    //    Dezelfde route als de pagina zelf loopt, zodat de preview nooit iets
+    //    anders beweert dan wat de bezoeker vervolgens te zien krijgt.
+    const resolved = await resolveInvite(code);
+    const invite = resolved ? await fetchInviteWeergave(resolved.code) : null;
+    if (invite?.drivingschools?.name) {
+      schoolName = invite.drivingschools.name;
     }
   }
 
@@ -100,45 +146,33 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function JoinPage({ params }: Props) {
   const { code } = await params;
 
-  // 1. Check if it's a registration_slug for a driving school
-  const schools = await supabaseGet<{ registration_slug: string; registration_enabled: boolean }[]>(
+  // De drie reads. Geldigheid wordt niet hier bepaald maar door
+  // resolve_invite; de rest is opmaak. Zie lib/join-resolver.ts.
+  const schools = await supabaseGet<SchoolTreffer[]>(
     `drivingschools?registration_slug=eq.${encodeURIComponent(code)}&select=registration_slug,registration_enabled&limit=1`,
   );
+  const school = schools?.[0] ?? null;
 
-  if (schools && schools.length > 0 && schools[0].registration_enabled) {
-    redirect(`/${schools[0].registration_slug}`);
+  let resolved: ResolveTreffer | null = null;
+  let invite: InviteWeergave | null = null;
+  if (!school) {
+    resolved = await resolveInvite(code);
+    invite = resolved ? await fetchInviteWeergave(resolved.code) : null;
   }
 
-  // 2. Check if it's an invitation_links.code
-  const invites = await supabaseGet<InviteLink[]>(
-    `invitation_links?code=eq.${encodeURIComponent(code.toUpperCase())}&select=id,code,drivingschool_id,instructor_id,is_multi_use,used,expires_at,drivingschools(registration_slug,name)&limit=1`,
-  );
+  const uitkomst = bepaalJoinUitkomst({ school, resolved, invite });
 
-  const invite = invites?.[0] ?? null;
-
-  // No matching invite found
-  if (!invite) {
+  if (uitkomst.soort === 'verlopen') {
     return <ExpiredPage />;
   }
 
-  // Check if expired
-  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    return <ExpiredPage />;
-  }
-
-  // Check if single-use and already used
-  if (!invite.is_multi_use && invite.used) {
-    return <ExpiredPage />;
-  }
-
-  // Multi-use school invite → redirect to registration form
-  if (invite.is_multi_use && invite.drivingschools?.registration_slug) {
-    redirect(`/${invite.drivingschools.registration_slug}`);
+  if (uitkomst.soort === 'redirect') {
+    redirect(`/${uitkomst.slug}`);
   }
 
   // Personal invite → show "Open in app" page (without showing the code)
-  const schoolName = invite.drivingschools?.name ?? 'je rijschool';
-  const appDeepLink = `ribba://join/${invite.code}`;
+  const schoolName = uitkomst.schoolNaam;
+  const appDeepLink = `ribba://join/${uitkomst.code}`;
 
   return (
     <main className="page-wrapper">
