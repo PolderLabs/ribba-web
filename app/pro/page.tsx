@@ -3,10 +3,17 @@ import Image from 'next/image';
 import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
 import { APP_STORE_URL } from '@/lib/app-links';
-import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+import {
+  getPlanPricing,
+  formatCentsForDisplay,
+  extraInstructorNetMonthlyCents,
+  INCLUDED_INSTRUCTORS,
+} from '@/lib/plan-pricing';
 
 const BASIC_GROSS = formatCentsForDisplay(getPlanPricing('basic').grossMonthlyCents);
 const PREMIUM_GROSS = formatCentsForDisplay(getPlanPricing('premium').grossMonthlyCents);
+const PREMIUM_INCLUDED_INSTRUCTORS = INCLUDED_INSTRUCTORS.premium;
+const EXTRA_INSTRUCTOR_NET = formatCentsForDisplay(extraInstructorNetMonthlyCents('premium'));
 
 export const metadata: Metadata = {
   title: 'Ribba – Rijschool Planner',
@@ -25,7 +32,8 @@ const BASIC_FEATURES = [
 
 const PREMIUM_FEATURES = [
   'Onbeperkte leerlingen',
-  'Tot 5 instructeurs',
+  `Tot ${PREMIUM_INCLUDED_INSTRUCTORS} instructeurs inbegrepen`,
+  `Daarboven ${EXTRA_INSTRUCTOR_NET}/mnd excl. btw per extra instructeur`,
   'Alle koppelingen (CBR, Moneybird, Mollie)',
   'Facturatie & lespakketten',
   'Leerling-app',
