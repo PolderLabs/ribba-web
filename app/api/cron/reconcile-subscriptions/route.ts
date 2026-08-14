@@ -1,7 +1,13 @@
-// Nightly reconciliation: vind licenses die wel een Mollie customer hebben
-// (= eerste iDEAL-betaling is gelukt) maar nog geen recurring subscription,
-// en probeer de subscription alsnog aan te maken. Vangnet voor het geval
-// onze webhook failed terwijl de betaling al binnen is.
+// Nightly reconciliation, twee passen:
+//
+// 1. Vind licenses die wel een Mollie customer hebben (= eerste iDEAL-betaling
+//    is gelukt) maar nog geen recurring subscription, en maak die alsnog aan.
+//    Vangnet voor het geval onze webhook failed terwijl de betaling al binnen is.
+//
+// 2. Synchroniseer het bedrag van bestaande subscriptions met de teamgrootte.
+//    Premium bevat 5 instructeurs, daarboven €35 netto per extra instructeur.
+//    Instructeurs worden in de app direct in Supabase aangemaakt, dus dit is
+//    het enige moment waarop wij dat verschil kunnen zien en doorzetten.
 //
 // Auth: Vercel Cron stuurt automatisch `Authorization: Bearer ${CRON_SECRET}`.
 
@@ -13,10 +19,13 @@ import { sendAdminNotification } from '@/lib/admin-notifications';
 import { logBillingEvent } from '@/lib/billing-events';
 import {
   isPaidPlan,
-  getPlanPricing,
+  getSubscriptionPricing,
   formatCentsForMollie,
+  centsFromMollieValue,
+  totalNetMonthlyEurosForDb,
   planDescription,
 } from '@/lib/plan-pricing';
+import { countActiveInstructors } from '@/lib/active-instructors';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -81,16 +90,18 @@ export async function GET(request: NextRequest) {
       continue;
     }
     const plan = license.billing_plan;
-    // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT).
-    const pricing = getPlanPricing(plan);
     try {
+      // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT). Het bedrag
+      // schaalt mee met het aantal actieve instructeurs.
+      const instructors = await countActiveInstructors(getSupabase(), license.school_id);
+      const pricing = getSubscriptionPricing(plan, Math.max(1, instructors));
       const startDate = new Date();
       startDate.setMonth(startDate.getMonth() + 1);
       const startDateStr = startDate.toISOString().split('T')[0];
 
       const subscription = await getMollie().customerSubscriptions.create({
         customerId: license.mollie_customer_id!,
-        amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
+        amount: { currency: 'EUR', value: formatCentsForMollie(pricing.totalGrossMonthlyCents) },
         interval: '1 month',
         startDate: startDateStr,
         description: planDescription(pricing.plan),
@@ -103,6 +114,7 @@ export async function GET(request: NextRequest) {
         .update({
           external_subscription_id: subscription.id,
           period_end: startDate.toISOString(),
+          price_per_month: totalNetMonthlyEurosForDb(pricing),
         })
         .eq('id', license.id);
 
@@ -118,6 +130,8 @@ export async function GET(request: NextRequest) {
           external_subscription_id: subscription.id,
           mollie_customer_id: license.mollie_customer_id,
           period_end: startDate.toISOString(),
+          instructors,
+          net_monthly: totalNetMonthlyEurosForDb(pricing),
         },
       });
     } catch (err) {
@@ -158,10 +172,139 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ── Pas 2: bedragen synchroniseren met de teamgrootte ────────────────
+  //
+  // Premium bevat 5 instructeurs; daarboven €35 netto per extra instructeur.
+  // Instructeurs worden in de app direct in Supabase aangemaakt — er is geen
+  // route in deze repo die dat afvangt — dus is er geen moment waarop we het
+  // Mollie-bedrag live kunnen bijwerken. Deze pas is dat moment.
+  //
+  // Besluit 14 aug 2026: GEEN proratie. Het subscription-bedrag bij Mollie
+  // wordt bijgewerkt en geldt vanaf de volgende incasso; de lopende maand
+  // blijft op het oude bedrag staan. Dat geldt beide kanten op — krimpt het
+  // team, dan gaat het bedrag op dezelfde manier omlaag.
+  const amountResults: Array<{
+    school_id: string;
+    status: 'synced' | 'unchanged' | 'failed' | 'skipped';
+    from?: string;
+    to?: string;
+    instructors?: number;
+    reason?: string;
+  }> = [];
+
+  const { data: subscribed, error: subscribedError } = await getSupabase()
+    .from('instructor_licenses')
+    .select('id, school_id, billing_plan, mollie_customer_id, external_subscription_id')
+    .eq('status', 'active')
+    .eq('is_trial', false)
+    .not('mollie_customer_id', 'is', null)
+    .not('external_subscription_id', 'is', null)
+    .is('cancelled_at', null);
+
+  if (subscribedError) {
+    console.error('reconcile-subscriptions: amount-sync query failed', subscribedError);
+  }
+
+  for (const license of subscribed ?? []) {
+    if (!isPaidPlan(license.billing_plan)) {
+      amountResults.push({
+        school_id: license.school_id,
+        status: 'skipped',
+        reason: `unknown_plan:${String(license.billing_plan)}`,
+      });
+      continue;
+    }
+    const plan = license.billing_plan;
+    try {
+      const instructors = await countActiveInstructors(getSupabase(), license.school_id);
+      const pricing = getSubscriptionPricing(plan, Math.max(1, instructors));
+      const expectedValue = formatCentsForMollie(pricing.totalGrossMonthlyCents);
+
+      const sub = await getMollie().customerSubscriptions.get(
+        license.external_subscription_id!,
+        { customerId: license.mollie_customer_id! },
+      );
+
+      // Alleen een lopend abonnement bijwerken. Een gepauzeerde/gecancelde
+      // subscription laten we met rust; die wordt elders opgepakt.
+      if (sub.status !== 'active') {
+        amountResults.push({
+          school_id: license.school_id,
+          status: 'skipped',
+          reason: `subscription_status:${String(sub.status)}`,
+        });
+        continue;
+      }
+
+      const currentCents = centsFromMollieValue(sub.amount.value);
+      if (currentCents === pricing.totalGrossMonthlyCents) {
+        amountResults.push({ school_id: license.school_id, status: 'unchanged', instructors });
+        continue;
+      }
+
+      await getMollie().customerSubscriptions.update(license.external_subscription_id!, {
+        customerId: license.mollie_customer_id!,
+        amount: { currency: 'EUR', value: expectedValue },
+        description: planDescription(pricing.plan),
+      });
+
+      await getSupabase()
+        .from('instructor_licenses')
+        .update({ price_per_month: totalNetMonthlyEurosForDb(pricing) })
+        .eq('id', license.id);
+
+      amountResults.push({
+        school_id: license.school_id,
+        status: 'synced',
+        from: sub.amount.value,
+        to: expectedValue,
+        instructors,
+      });
+      console.log(
+        `reconcile: school ${license.school_id} bedrag ${sub.amount.value} → ${expectedValue} (${instructors} instructeurs)`,
+      );
+
+      await logBillingEvent({
+        school_id: license.school_id,
+        event_type: 'subscription_amount_synced',
+        source: 'cron:reconcile-subscriptions',
+        payload: {
+          plan,
+          external_subscription_id: license.external_subscription_id,
+          instructors,
+          included_instructors: pricing.includedInstructors,
+          extra_instructors: pricing.extraInstructors,
+          amount_from: sub.amount.value,
+          amount_to: expectedValue,
+          net_monthly: totalNetMonthlyEurosForDb(pricing),
+        },
+      });
+    } catch (err) {
+      const reason = String(err).slice(0, 200);
+      amountResults.push({ school_id: license.school_id, status: 'failed', reason });
+      console.error(`reconcile: amount-sync failed for school ${license.school_id}:`, err);
+
+      await logBillingEvent({
+        school_id: license.school_id,
+        event_type: 'subscription_amount_sync_failed',
+        source: 'cron:reconcile-subscriptions',
+        payload: {
+          plan,
+          external_subscription_id: license.external_subscription_id,
+          error: reason,
+        },
+      });
+    }
+  }
+
   return NextResponse.json({
     checked: candidates?.length ?? 0,
     fixed: results.filter((r) => r.status === 'fixed').length,
     failed: results.filter((r) => r.status === 'failed').length,
     results,
+    amount_checked: subscribed?.length ?? 0,
+    amount_synced: amountResults.filter((r) => r.status === 'synced').length,
+    amount_failed: amountResults.filter((r) => r.status === 'failed').length,
+    amount_results: amountResults,
   });
 }

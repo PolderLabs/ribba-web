@@ -3,7 +3,13 @@
 // via Resend. Zelfde huisstijl als lib/admin-notifications.ts.
 
 import { logBillingEvent } from './billing-events';
-import { getPlanPricing, formatCentsForDisplay, type PlanPricing } from './plan-pricing';
+import {
+  getPlanPricing,
+  formatCentsForDisplay,
+  extraInstructorNetMonthlyCents,
+  INCLUDED_INSTRUCTORS,
+  type SubscriptionPricing,
+} from './plan-pricing';
 import { DOMAIN } from './domains';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -153,7 +159,7 @@ export async function sendSubscriptionActivatedMail(
   schoolId: string,
   schoolEmail: string,
   schoolName: string,
-  pricing: PlanPricing,
+  pricing: SubscriptionPricing,
   nextChargeDate: Date | string,
 ): Promise<void> {
   // NB: deze bevestigingsmail is bewust GEEN factuur, btw-factuur of
@@ -173,16 +179,25 @@ export async function sendSubscriptionActivatedMail(
           <td style="padding:14px 16px;font-size:14px;color:#0F172A;font-weight:600">${escapeHtml(planLabel)}</td>
         </tr>
         <tr>
-          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Maandbedrag (excl. btw)</td>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Abonnement (excl. btw)</td>
           <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.netMonthlyCents)}</td>
         </tr>
+        ${pricing.extraInstructors > 0 ? `
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">${pricing.extraInstructors} extra instructeur${pricing.extraInstructors === 1 ? '' : 's'} boven de ${pricing.includedInstructors} (excl. btw)</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.extraInstructors * pricing.extraInstructorNetMonthlyCents)}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Subtotaal (excl. btw)</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.totalNetMonthlyCents)}</td>
+        </tr>` : ''}
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Btw (${pricing.vatRatePercent}%)</td>
-          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.vatCents)}</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.totalVatCents)}</td>
         </tr>
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Totaal per maand (incl. btw)</td>
-          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.grossMonthlyCents)}</td>
+          <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;font-weight:600">${formatCentsForDisplay(pricing.totalGrossMonthlyCents)}</td>
         </tr>
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:13px;color:#64748B">Volgende incasso</td>
@@ -271,7 +286,7 @@ export async function sendTrialEndingReminderMail(
         <tr>
           <td style="padding:0 16px 14px 16px;font-size:14px;color:#0F172A;border-top:1px solid #E2E8F0;padding-top:14px">
             <strong>Premium — ${formatCentsForDisplay(getPlanPricing('premium').netMonthlyCents)} / maand excl. btw</strong> <span style="font-size:13px;color:#64748B">(${formatCentsForDisplay(getPlanPricing('premium').grossMonthlyCents)} incl. btw)</span><br>
-            <span style="font-size:13px;color:#64748B">Onbeperkt leerlingen, tot 5 instructeurs, alle koppelingen</span>
+            <span style="font-size:13px;color:#64748B">Onbeperkt leerlingen, ${INCLUDED_INSTRUCTORS.premium} instructeurs inbegrepen (daarboven ${formatCentsForDisplay(extraInstructorNetMonthlyCents('premium'))} p/m excl. btw per extra instructeur), alle koppelingen</span>
           </td>
         </tr>
       </table>

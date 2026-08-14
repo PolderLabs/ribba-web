@@ -5,7 +5,12 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
-import { getPlanPricing, formatCentsForDisplay } from '@/lib/plan-pricing';
+import {
+  getPlanPricing,
+  formatCentsForDisplay,
+  extraInstructorNetMonthlyCents,
+  INCLUDED_INSTRUCTORS,
+} from '@/lib/plan-pricing';
 import {
   createCheckoutController,
   startStripeCheckout,
@@ -34,7 +39,8 @@ const basicFeatures = [
 
 const premiumFeatures = [
   'Onbeperkte leerlingen',
-  'Tot 5 instructeurs',
+  `Tot ${INCLUDED_INSTRUCTORS.premium} instructeurs inbegrepen`,
+  `Daarboven ${formatCentsForDisplay(extraInstructorNetMonthlyCents('premium'))}/mnd excl. btw per extra instructeur`,
   'Alle koppelingen (CBR, Moneybird, Mollie)',
   'Facturatie & pakketten',
   'Leerling-app',
@@ -458,7 +464,8 @@ function UpgradeContent() {
               PROEFPERIODE
             </span>
             <div>
-              Je gebruikt nu <strong>Premium</strong> — alle functies vrij, onbeperkt leerlingen en instructeurs.
+              Je gebruikt nu <strong>Premium</strong> — alle functies vrij, onbeperkt leerlingen en tot{' '}
+              {INCLUDED_INSTRUCTORS.premium} instructeurs.
               {trialEndFormatted && (
                 <>
                   {' '}
@@ -547,6 +554,11 @@ function UpgradeContent() {
               </div>
               <p style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0' }}>
                 Incasso: {formatCentsForDisplay(premiumPricing.grossMonthlyCents)} per maand incl. 21% btw
+              </p>
+              <p style={{ fontSize: 13, color: '#78716C', margin: '4px 0 0' }}>
+                Vanaf de {INCLUDED_INSTRUCTORS.premium + 1}e instructeur komt daar{' '}
+                {formatCentsForDisplay(extraInstructorNetMonthlyCents('premium'))} excl. btw per extra
+                instructeur per maand bij.
               </p>
               <p className="plan-desc">
                 Groei je rijschool met meer leerlingen en instructeurs.

@@ -117,6 +117,7 @@ test('C1: basic checkout → eerste betaling exact €30,25 bruto (€25 excl. +
     LICENSE_WITH_CUSTOMER,         // license lookup (customer bestaat al)
     { count: 10, error: null },    // basic-limiet: students count
     { count: 1, error: null },     // basic-limiet: instructors count
+    { count: 1, error: null },     // prijsbepaling: actieve instructeurs
   ]);
 
   const res = await POST(reqFor({ school_id: SCHOOL, plan: 'basic' }));
@@ -136,6 +137,7 @@ test('C2: premium checkout → eerste betaling exact €54,45 bruto (€45 excl.
     SCHOOL_ROW,
     LICENSE_WITH_CUSTOMER,
     // premium: geen limietchecks
+    { count: 3, error: null },     // prijsbepaling: 3 instructeurs, binnen de 5
   ]);
 
   const res = await POST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
@@ -144,6 +146,70 @@ test('C2: premium checkout → eerste betaling exact €54,45 bruto (€45 excl.
   const p = mollie.calls.paymentsCreate[0];
   assert.deepEqual(p.amount, { currency: 'EUR', value: '54.45' });
   assert.equal(p.description, 'Ribba Premium – Maandabonnement');
+});
+
+test('C2b: premium met 7 instructeurs → €45 + 2 × €35 = €115 excl. → €139,15 bruto', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  currentClient = makeClient([
+    INSTRUCTOR,
+    SCHOOL_ROW,
+    LICENSE_WITH_CUSTOMER,
+    { count: 7, error: null },     // prijsbepaling: 2 instructeurs boven de 5
+  ]);
+
+  const res = await POST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
+  assert.equal(res.status, 200);
+  const p = mollie.calls.paymentsCreate[0];
+  assert.deepEqual(p.amount, { currency: 'EUR', value: '139.15' });
+});
+
+test('C2c: premium op exact 5 instructeurs rekent nog niets bij', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  currentClient = makeClient([
+    INSTRUCTOR,
+    SCHOOL_ROW,
+    LICENSE_WITH_CUSTOMER,
+    { count: 5, error: null },
+  ]);
+
+  const res = await POST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(mollie.calls.paymentsCreate[0].amount, { currency: 'EUR', value: '54.45' });
+});
+
+test('C2d: mislukte instructeurtelling → 503, nul Mollie-calls (nooit gokken op een bedrag)', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  currentClient = makeClient([
+    INSTRUCTOR,
+    SCHOOL_ROW,
+    LICENSE_WITH_CUSTOMER,
+    { count: null, error: { message: 'timeout' } },
+  ]);
+
+  const res = await POST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
+  assert.equal(res.status, 503);
+  assert.equal(res.body.reason, 'pricing_unavailable');
+  assert.equal(mollie.calls.paymentsCreate.length, 0);
+});
+
+test('C2e: de Basic-limietfout blijft voorgaan op de prijsbepaling', async () => {
+  resetSpies();
+  mollie = makeMollie();
+  currentClient = makeClient([
+    INSTRUCTOR,
+    SCHOOL_ROW,
+    LICENSE_WITH_CUSTOMER,
+    { count: 10, error: null },    // students, binnen de limiet
+    { count: 4, error: null },     // instructeurs: te veel voor Basic
+  ]);
+
+  const res = await POST(reqFor({ school_id: SCHOOL, plan: 'basic' }));
+  assert.equal(res.status, 400);
+  assert.equal(res.body.reason, 'basic_instructor_limit_exceeded');
+  assert.equal(mollie.calls.paymentsCreate.length, 0);
 });
 
 test('C3: onbekend plan → 400 fail-closed, nul Supabase-queries, nul Mollie-calls', async () => {

@@ -15,6 +15,11 @@ const {
   netMonthlyEurosForDb,
   planDescription,
   UnknownPlanError,
+  INCLUDED_INSTRUCTORS,
+  getSubscriptionPricing,
+  extraInstructorNetMonthlyCents,
+  totalNetMonthlyEurosForDb,
+  PlanNotExpandableError,
 } = await import('../lib/plan-pricing.ts');
 
 test('P1: Basic — €25,00 excl. → €5,25 btw → €30,25 bruto, alles in integer centen', () => {
@@ -80,4 +85,79 @@ test('P8: btw-tarief is exact 21% en de som klopt per constructie', () => {
 test('P9: vaste Mollie-omschrijvingen (checkout, webhook én reconcile delen deze)', () => {
   assert.equal(planDescription('basic'), 'Ribba Basic – Maandabonnement');
   assert.equal(planDescription('premium'), 'Ribba Premium – Maandabonnement');
+});
+
+// ── Extra instructeurs: Premium bevat 5, daarboven €35 netto p/m ──────
+
+test('P10: inbegrepen instructeurs — Basic 1, Premium 5', () => {
+  assert.equal(INCLUDED_INSTRUCTORS.basic, 1);
+  assert.equal(INCLUDED_INSTRUCTORS.premium, 5);
+});
+
+test('P11: Premium tot en met 5 instructeurs rekent geen extra kosten', () => {
+  for (const n of [1, 2, 3, 4, 5]) {
+    const p = getSubscriptionPricing('premium', n);
+    assert.equal(p.extraInstructors, 0);
+    assert.equal(p.totalNetMonthlyCents, 4500);
+    assert.equal(p.totalGrossMonthlyCents, 5445);
+  }
+});
+
+test('P12: Premium met 6 instructeurs — €45 + €35 = €80 excl. → €96,80 bruto', () => {
+  const p = getSubscriptionPricing('premium', 6);
+  assert.equal(p.extraInstructors, 1);
+  assert.equal(p.extraInstructorNetMonthlyCents, 3500);
+  assert.equal(p.totalNetMonthlyCents, 8000);
+  assert.equal(p.totalVatCents, 1680);
+  assert.equal(p.totalGrossMonthlyCents, 9680);
+  assert.equal(formatCentsForMollie(p.totalGrossMonthlyCents), '96.80');
+});
+
+test('P13: Premium met 7 instructeurs — €45 + 2 × €35 = €115 excl. btw', () => {
+  const p = getSubscriptionPricing('premium', 7);
+  assert.equal(p.extraInstructors, 2);
+  assert.equal(p.totalNetMonthlyCents, 11500);
+  assert.equal(formatCentsForDisplay(p.totalNetMonthlyCents), '€115,00');
+});
+
+test('P14: de vaste planprijs blijft naast het totaal beschikbaar', () => {
+  const p = getSubscriptionPricing('premium', 8);
+  assert.equal(p.netMonthlyCents, 4500);
+  assert.equal(p.grossMonthlyCents, 5445);
+  assert.equal(p.totalNetMonthlyCents, 4500 + 3 * 3500);
+});
+
+test('P15: btw wordt over het TOTAAL berekend, som klopt per constructie', () => {
+  for (const n of [1, 5, 6, 9, 25]) {
+    const p = getSubscriptionPricing('premium', n);
+    assert.equal(p.totalNetMonthlyCents + p.totalVatCents, p.totalGrossMonthlyCents);
+    assert.equal(p.totalVatCents, Math.round((p.totalNetMonthlyCents * 21) / 100));
+    assert.ok(Number.isInteger(p.totalNetMonthlyCents) && Number.isInteger(p.totalVatCents));
+  }
+});
+
+test('P16: Basic is niet uitbreidbaar — fail-closed boven 1 instructeur', () => {
+  assert.equal(getSubscriptionPricing('basic', 1).totalNetMonthlyCents, 2500);
+  assert.throws(() => getSubscriptionPricing('basic', 2), PlanNotExpandableError);
+  assert.throws(() => extraInstructorNetMonthlyCents('basic'), PlanNotExpandableError);
+});
+
+test('P17: onbekend plan en onzinnige aantallen falen closed', () => {
+  assert.throws(() => getSubscriptionPricing('gratis', 3), UnknownPlanError);
+  assert.throws(() => getSubscriptionPricing(null, 3), UnknownPlanError);
+  for (const n of [0, -1, 1.5, NaN, '6']) {
+    assert.throws(() => getSubscriptionPricing('premium', n), /Ongeldig aantal instructeurs/);
+  }
+});
+
+test('P18: databasegrens met extra instructeurs — totaal netto, niet de planprijs', () => {
+  assert.equal(totalNetMonthlyEurosForDb(getSubscriptionPricing('premium', 5)), 45);
+  assert.equal(totalNetMonthlyEurosForDb(getSubscriptionPricing('premium', 7)), 115);
+  // netMonthlyEurosForDb blijft bewust de vaste planprijs teruggeven.
+  assert.equal(netMonthlyEurosForDb(getSubscriptionPricing('premium', 7)), 45);
+});
+
+test('P19: presentatiehulp — €35 netto per extra instructeur bij Premium', () => {
+  assert.equal(extraInstructorNetMonthlyCents('premium'), 3500);
+  assert.equal(formatCentsForDisplay(extraInstructorNetMonthlyCents('premium')), '€35,00');
 });
