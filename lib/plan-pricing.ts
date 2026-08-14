@@ -189,6 +189,20 @@ export function formatCentsForMollie(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/**
+ * Terugweg over de Mollie-grens: '95.59' → 9559 centen. Nodig om het bedrag
+ * van een bestaande subscription te vergelijken met wat we vandaag zouden
+ * rekenen. Fail-closed op alles wat niet exact een bedrag met twee decimalen
+ * is — een verkeerd gelezen bedrag zou een onterechte incassowijziging
+ * kunnen triggeren.
+ */
+export function centsFromMollieValue(value: string): number {
+  if (typeof value !== 'string' || !/^\d+\.\d{2}$/.test(value)) {
+    throw new Error(`Onleesbaar Mollie-bedrag: ${String(value)}`);
+  }
+  return Math.round(Number(value) * 100);
+}
+
 /** Presentatiegrens: nl-NL-weergave, bv. 3025 → '€30,25'. */
 export function formatCentsForDisplay(cents: number): string {
   return `€${formatCentsForMollie(cents).replace('.', ',')}`;

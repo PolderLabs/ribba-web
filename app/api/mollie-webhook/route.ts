@@ -23,11 +23,13 @@ import {
 } from '@/lib/billing-webhook-receipts';
 import {
   isPaidPlan,
-  getPlanPricing,
+  getSubscriptionPricing,
   formatCentsForMollie,
-  netMonthlyEurosForDb,
+  totalNetMonthlyEurosForDb,
   planDescription,
+  type SubscriptionPricing,
 } from '@/lib/plan-pricing';
+import { countActiveInstructors } from '@/lib/active-instructors';
 
 const FAILED_PAYMENT_LIMIT = 3;
 
@@ -124,8 +126,23 @@ export async function POST(request: NextRequest) {
         }
         return NextResponse.json({ status: 'unknown_plan_rejected' });
       }
-      // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT).
-      const pricing = getPlanPricing(plan);
+      // Prijzen zijn excl. 21% btw; Mollie incasseert bruto (SSoT). Het bedrag
+      // schaalt mee met het team: Premium bevat 5 instructeurs, daarboven €34
+      // netto per extra instructeur.
+      //
+      // Lui en precies éénmaal: een delivery die verderop als duplicaat of
+      // foreign payment wordt weggegooid hoeft niet te tellen. Mislukt de
+      // telling wél op het pad dat een bedrag vastlegt, dan gooien we — de
+      // outer catch geeft 500 en Mollie levert opnieuw af. Beter een retry dan
+      // een subscription op een verkeerd bedrag vastzetten.
+      let pricingCache: SubscriptionPricing | null = null;
+      const resolvePricing = async (): Promise<SubscriptionPricing> => {
+        if (!pricingCache) {
+          const instructors = await countActiveInstructors(getSupabase(), school_id);
+          pricingCache = getSubscriptionPricing(plan, Math.max(1, instructors));
+        }
+        return pricingCache;
+      };
       // ── Canonieke idempotentie-claim (billing_webhook_receipts, throwing) ──
       // Vóór élke side-effect. Bij gelijktijdige deliveries wint er exact één
       // via de unique constraint. Een claim-/DB-fout throwt → outer catch → 500.
@@ -295,9 +312,10 @@ export async function POST(request: NextRequest) {
               startDate.setMonth(startDate.getMonth() + 1);
               const startDateStr = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
+              const pricing = await resolvePricing();
               const subscription = await getMollie().customerSubscriptions.create({
                 customerId,
-                amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
+                amount: { currency: 'EUR', value: formatCentsForMollie(pricing.totalGrossMonthlyCents) },
                 interval: '1 month',
                 startDate: startDateStr,
                 description: planDescription(pricing.plan),
@@ -332,6 +350,7 @@ export async function POST(request: NextRequest) {
             // so access is valid until that date at minimum.
             // E-eis: exact één actieve license-rij geraakt — error checken én
             // rijenaantal verifiëren; anders throw → failed + 500.
+            const licensePricing = await resolvePricing();
             const { data: updatedRows, error: updateError } = await getSupabase()
               .from('instructor_licenses')
               .update({
@@ -340,8 +359,10 @@ export async function POST(request: NextRequest) {
                 mollie_customer_id: customerId,
                 is_trial: false,
                 // Besluit 12 jul 2026: price_per_month = NETTO maandprijs
-                // (excl. btw); Mollie incasseert het bruto bedrag.
-                price_per_month: netMonthlyEurosForDb(pricing),
+                // (excl. btw); Mollie incasseert het bruto bedrag. Sinds de
+                // extra-instructeurprijs is dat het TOTAAL (plan + extra's),
+                // dus totalNetMonthlyEurosForDb en niet netMonthlyEurosForDb.
+                price_per_month: totalNetMonthlyEurosForDb(licensePricing),
                 period_end: periodEndIso,
                 cancelled_at: null,
                 failed_payment_count: 0,
@@ -569,7 +590,7 @@ export async function POST(request: NextRequest) {
                 school_id,
                 schoolRow.email,
                 schoolRow.name,
-                pricing,
+                await resolvePricing(),
                 nextChargeDate,
               ).catch((e) => console.error('School subscription-activated mail failed:', e));
             }

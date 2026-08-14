@@ -57,12 +57,27 @@ const { POST } = await import('../app/api/mollie-webhook/route.ts');
 const SCHOOL = '0218195e-0000-0000-0000-000000000000';
 const CHAIN = ['upsert', 'select', 'update', 'eq', 'or', 'single', 'limit', 'order', 'maybeSingle', 'is', 'not', 'lt', 'gte'];
 
-function makeClient(responses) {
+// De instructeurtelling (prijsbepaling: Premium bevat 5, daarboven €34 p/m)
+// wordt apart bediend: ze verbruikt GEEN scripted response en komt niet in
+// `calls`, zodat alle bestaande index-asserties (calls[1], calls[4], ...)
+// blijven kloppen. Observeerbaar via `instructorCalls`.
+function makeClient(responses, opts = {}) {
   let i = 0;
   const calls = [];
+  const instructorCalls = [];
+  const instructorCount = opts.instructorCount ?? 1;
   return {
     calls,
+    instructorCalls,
     from(table) {
+      if (table === 'instructors' && opts.countInstructors !== false) {
+        instructorCalls.push(table);
+        const builder = {};
+        for (const m of CHAIN) builder[m] = () => builder;
+        builder.then = (resolve, reject) =>
+          Promise.resolve({ count: instructorCount, error: opts.instructorError ?? null }).then(resolve, reject);
+        return builder;
+      }
       const response = responses[i++] ?? { data: null, error: { message: `no scripted response for call #${i}` } };
       const record = { table, ops: [] };
       calls.push(record);

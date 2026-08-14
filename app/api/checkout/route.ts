@@ -7,10 +7,11 @@ import { BASIC_MAX_STUDENTS, BASIC_MAX_INSTRUCTORS } from '@/lib/plan-limits';
 import { logBillingEvent } from '@/lib/billing-events';
 import {
   isPaidPlan,
-  getPlanPricing,
+  getSubscriptionPricing,
   formatCentsForMollie,
   planDescription,
 } from '@/lib/plan-pricing';
+import { countActiveInstructors } from '@/lib/active-instructors';
 
 function getMollie() {
   return createMollieClient({ apiKey: process.env.MOLLIE_API_KEY! });
@@ -73,8 +74,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prijzen zijn excl. 21% btw; Mollie incasseert het bruto bedrag (SSoT).
-    const pricing = getPlanPricing(plan);
+    // Prijs wordt pas ná de Basic-limietcheck bepaald: die check geeft een
+    // begrijpelijke foutmelding bij te veel instructeurs, en die wil je niet
+    // overrulen met een generieke prijsfout.
 
     // Get school info for Mollie customer name
     const { data: school } = await getSupabase()
@@ -145,6 +147,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Het maandbedrag schaalt mee met het team: Premium bevat 5 instructeurs,
+    // daarboven €34 netto per extra instructeur. Vlak vóór checkout tellen —
+    // dit bepaalt wat Mollie incasseert, dus geen gecachte waarde. Een school
+    // zonder actieve instructeurs betaalt de kale planprijs.
+    let pricing;
+    try {
+      const activeInstructorsNow = await countActiveInstructors(getSupabase(), school_id);
+      pricing = getSubscriptionPricing(plan, Math.max(1, activeInstructorsNow));
+    } catch (err) {
+      console.error('checkout: kon abonnementsbedrag niet bepalen', err);
+      return NextResponse.json(
+        {
+          error: 'We konden je abonnementsbedrag niet bepalen. Probeer het zo nog eens.',
+          reason: 'pricing_unavailable',
+        },
+        { status: 503 },
+      );
+    }
+
     // B1: de eventuele oude subscription NIET meer direct hier cancelen.
     // Als de user de iDEAL-flow afbreekt, zou de oude sub anders al dood zijn
     // terwijl de nieuwe nooit is aangemaakt → school raakt toegang kwijt zonder
@@ -176,7 +197,7 @@ export async function POST(request: NextRequest) {
     // Create first payment (iDEAL) — this establishes the SEPA mandate
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
     const payment = await getMollie().payments.create({
-      amount: { currency: 'EUR', value: formatCentsForMollie(pricing.grossMonthlyCents) },
+      amount: { currency: 'EUR', value: formatCentsForMollie(pricing.totalGrossMonthlyCents) },
       description: planDescription(pricing.plan),
       customerId: mollieCustomerId,
       sequenceType: SequenceType.first,
