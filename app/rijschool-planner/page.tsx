@@ -23,7 +23,7 @@ const FEATURES = [
   },
   {
     title: 'CBR-koppeling',
-    desc: 'Examens direct vanuit de app inplannen en beheren.',
+    desc: 'Examens en uitslagen worden uitgelezen en automatisch aan de juiste leerling gekoppeld.',
   },
 ];
 

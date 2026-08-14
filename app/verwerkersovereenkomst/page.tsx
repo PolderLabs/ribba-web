@@ -191,8 +191,8 @@ export default function VerwerkersovereenkomstPage() {
           (indien gekoppeld)
         </li>
         <li style={styles.li}>
-          CBR-koppeling: het doorgeven van examengegevens aan het CBR (indien
-          gekoppeld)
+          CBR-koppeling: het uitlezen van examengegevens en -uitslagen bij het
+          CBR en het koppelen daarvan aan de juiste leerling (indien gekoppeld)
         </li>
       </ul>
 
