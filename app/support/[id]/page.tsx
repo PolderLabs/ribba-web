@@ -8,6 +8,12 @@
 //
 // Niveau 0: bedrijfsgegevens van de rijschool wel, namen van instructeurs en
 // leerlingen niet. Zie de niveaugrens in migratie 20260803160000.
+//
+// Het abonnement komt uit twee bronnen die de database bewust apart houdt:
+// `abonnement` is Stripe (betaald), `licentie` is Ribba zelf (waar de proef
+// staat). Ze worden hier ook apart getoond. Zolang de proef nog niet via
+// Stripe loopt is dat het verschil tussen "geen abonnement" en "zit nog in de
+// proef" — en dat is precies het gesprek dat support voert.
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -31,6 +37,19 @@ interface Instructeur {
   laatste_activiteit: string | null;
 }
 
+/** De Ribba-kant van het abonnement; hier staat de proefperiode. */
+interface Licentie {
+  plan: string | null;
+  is_proef: boolean;
+  /** Ook gevuld ná een proef die is omgezet — `is_proef` bepaalt of hij nú loopt. */
+  proef_tot: string | null;
+  proef_verlopen: boolean;
+  proef_dagen_resterend: number | null;
+  gestart: string | null;
+  opgezegd: string | null;
+  loopt_tot: string | null;
+}
+
 interface Detail {
   school: {
     id: string; naam: string; is_internal: boolean; status: string | null;
@@ -45,6 +64,7 @@ interface Detail {
   instructeurs: Instructeur[];
   juridisch: { document: string; versie: string; wanneer: string }[];
   abonnement: { status: string; plan: string | null; gestart: string; loopt_tot: string | null } | null;
+  licentie: Licentie | null;
   cbr: {
     koppeling: string | null; connectie_status: string | null; laatste_fout: string | null;
     gewijzigd: string | null; laatste: string | null; laatste_geslaagd: string | null;
@@ -72,6 +92,46 @@ function moment(iso: string | null): string {
 function datum(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Stripe-statussen waarbij het abonnement loopt — past_due incluis: die houdt toegang. */
+const STRIPE_LOOPT = ['active', 'trialing', 'past_due'];
+const BETAALDE_PLANNEN = ['basic', 'premium'];
+
+const PLAN_LABEL: Record<string, string> = {
+  trial: 'proef',
+  basic: 'Basic',
+  premium: 'Premium',
+  expired: 'verlopen',
+};
+
+function planLabel(plan: string | null): string {
+  if (!plan) return '—';
+  return PLAN_LABEL[plan] ?? plan;
+}
+
+function dagen(n: number): string {
+  return n === 1 ? '1 dag' : `${n} dagen`;
+}
+
+/**
+ * De twee bronnen horen hetzelfde te zeggen. Zeggen ze dat niet, dan is dat
+ * geen weergavedetail maar een reconciliatiegat — support moet het zien
+ * voordat hij iets aan de rijschool belooft.
+ */
+function tegenspraak(licentie: Licentie | null, abo: Detail['abonnement']): string | null {
+  const licentieBetaald = BETAALDE_PLANNEN.includes(licentie?.plan ?? '');
+  const stripeLoopt = abo !== null && STRIPE_LOOPT.includes(abo.status);
+
+  if (licentieBetaald && !stripeLoopt) {
+    return abo === null
+      ? 'De licentie geeft een betaald plan, maar er staat geen enkel Stripe-abonnement tegenover.'
+      : `De licentie geeft een betaald plan, maar het Stripe-abonnement staat op '${abo.status}'.`;
+  }
+  if (stripeLoopt && !licentieBetaald) {
+    return `Stripe heeft een lopend abonnement, maar de licentie staat op '${planLabel(licentie?.plan ?? null)}'.`;
+  }
+  return null;
 }
 
 export default function SchoolDetailPagina({ params }: { params: Promise<{ id: string }> }) {
@@ -123,6 +183,12 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
   // De eerste stap die nog niet is gezet: daar is het gesprek over.
   const gestopt = onboarding.find((stap) => !stap.gereed);
 
+  // `?? null` en niet destructuring: dit scherm mag ook draaien tegen een
+  // database waar de migratie nog niet op is toegepast. Dan is er simpelweg
+  // geen licentieblok, en blijft alleen het Stripe-deel over.
+  const licentie = detail.licentie ?? null;
+  const conflict = tegenspraak(licentie, detail.abonnement);
+
   return (
     <div style={s.pagina}>
       <Link href="/support" style={s.terug}>← Alle rijscholen</Link>
@@ -134,6 +200,29 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
           {school.plaats ?? '—'} · ingeschreven {datum(school.aangemaakt)}
         </span>
       </div>
+
+      {licentie?.is_proef && (
+        // Een proef die deze week afloopt is het eerste wat je wil weten als je
+        // deze rijschool aan de lijn krijgt, dus die staat boven en niet in een
+        // kaart verderop.
+        <div style={
+          licentie.proef_verlopen ? s.signaalRood
+          : (licentie.proef_dagen_resterend ?? 99) <= 7 ? s.signaal
+          : s.signaalInfo
+        }>
+          {licentie.proef_verlopen ? (
+            <>Proefabonnement <strong>verlopen</strong> op {datum(licentie.proef_tot)}</>
+          ) : (
+            <>
+              Proefabonnement loopt nog{' '}
+              <strong>{dagen(licentie.proef_dagen_resterend ?? 0)}</strong>
+              {' '}— tot {datum(licentie.proef_tot)}
+            </>
+          )}
+        </div>
+      )}
+
+      {conflict && <div style={s.signaalRood}>{conflict}</div>}
 
       {gestopt && (
         <div style={s.signaal}>
@@ -159,6 +248,38 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
         </section>
 
         <section style={s.kaart}>
+          <h2 style={s.h2}>Abonnement</h2>
+          <p style={s.voetnoot}>
+            Betaald loopt via Stripe; de proefperiode wordt op dit moment nog
+            door Ribba zelf gezet. Twee bronnen, dus apart getoond.
+          </p>
+          <dl style={s.lijst}>
+            <Rij label="Ribba-licentie" waarde={licentie ? planLabel(licentie.plan) : 'geen licentie'} />
+            <Rij label="Proefabonnement" waarde={
+              !licentie?.is_proef ? 'nee'
+              : licentie.proef_verlopen ? `verlopen op ${datum(licentie.proef_tot)}`
+              : `tot ${datum(licentie.proef_tot)} · nog ${dagen(licentie.proef_dagen_resterend ?? 0)}`
+            } />
+            {licentie && !licentie.is_proef && licentie.proef_tot && (
+              // Historie: deze rijschool ís via een proef binnengekomen.
+              <Rij label="Eerdere proef liep tot" waarde={datum(licentie.proef_tot)} />
+            )}
+            <Rij label="Licentie gestart" waarde={licentie ? datum(licentie.gestart) : null} />
+            {licentie?.opgezegd && <Rij label="Licentie opgezegd" waarde={moment(licentie.opgezegd)} />}
+            {licentie?.loopt_tot && <Rij label="Licentie loopt tot" waarde={datum(licentie.loopt_tot)} />}
+            <Rij label="Stripe-abonnement" waarde={detail.abonnement
+              ? `${detail.abonnement.status}${detail.abonnement.plan ? ` · ${detail.abonnement.plan}` : ''}`
+              : 'geen'} />
+            {detail.abonnement && (
+              <>
+                <Rij label="Stripe gestart" waarde={datum(detail.abonnement.gestart)} />
+                <Rij label="Periode loopt tot" waarde={datum(detail.abonnement.loopt_tot)} />
+              </>
+            )}
+          </dl>
+        </section>
+
+        <section style={s.kaart}>
           <h2 style={s.h2}>Rijschool</h2>
           <dl style={s.lijst}>
             <Rij label="E-mail" waarde={school.email} />
@@ -178,9 +299,6 @@ export default function SchoolDetailPagina({ params }: { params: Promise<{ id: s
               school.wizard === 'completed' ? `afgerond · ${moment(school.wizard_afgesloten)}`
               : school.wizard === 'skipped' ? `overgeslagen · ${moment(school.wizard_afgesloten)}`
               : 'nog niet doorlopen'} />
-            <Rij label="Abonnement" waarde={detail.abonnement
-              ? `${detail.abonnement.status}${detail.abonnement.plan ? ` · ${detail.abonnement.plan}` : ''}`
-              : 'geen'} />
           </dl>
         </section>
 
@@ -322,6 +440,12 @@ const s: Record<string, React.CSSProperties> = {
   signaalRood: {
     background: '#FEF2F2', color: '#991B1B', padding: '10px 12px',
     borderRadius: 10, fontSize: 13, marginBottom: 12,
+  },
+  // Een proef die nog ruim loopt is informatie, geen waarschuwing. Pas onder de
+  // week kleurt hij amber (s.signaal) en na afloop rood.
+  signaalInfo: {
+    background: '#EFF6FF', color: '#1E40AF', padding: '10px 14px',
+    borderRadius: 10, fontSize: 14, marginBottom: 20,
   },
   foutBadge: {
     background: '#FEE2E2', color: '#991B1B', padding: '1px 7px', borderRadius: 999,
