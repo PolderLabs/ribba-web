@@ -33,7 +33,20 @@ export const OUDE_SIGNUP_ROUTE = '/api/register-school';
 export const NIEUWE_SIGNUP_ROUTE = '/api/signup/start';
 
 /** De route waar het registratieformulier vandaag naartoe post. */
-export const ACTIEVE_SIGNUP_ROUTE: string = OUDE_SIGNUP_ROUTE;
+//
+// ⚠️ OMGEZET VOOR DE KETENPROBE — DEZE BRANCH MAG NOOIT NAAR MAIN.
+//
+// Op main staat deze constante op OUDE_SIGNUP_ROUTE. Hier staat hij om, zodat
+// de Vercel-preview van deze branch de nieuwe keten laat zien: formulier →
+// pending registratie → Stripe Checkout.
+//
+// Diezelfde preview draait wel op de ECHTE database en het ECHTE
+// Stripe-account. Een inschrijving hier is dus een echte inschrijving, met een
+// echte rijschool en een echt SEPA-mandaat. Dat is precies de bedoeling van de
+// probe — maar het is geen speeltuin.
+//
+// Zie de probe-afspraak in ribbaPro docs/design/mandaat-bij-inschrijving.
+export const ACTIEVE_SIGNUP_ROUTE: string = NIEUWE_SIGNUP_ROUTE;
 
 /**
  * Vraagt de actieve route om een wachtwoord bij inschrijven?
