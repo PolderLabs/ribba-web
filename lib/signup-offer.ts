@@ -83,6 +83,7 @@ export const TRIAL_INTERVAL_METADATA_KEY = 'trial_interval';
 
 export type OfferFailure =
   | 'price_not_found'           // geen actieve Price met deze lookup key
+  | 'price_zoekfout'            // Stripe weigerde de vraag (modus, rechten, storing)
   | 'price_inactive'            // gearchiveerde Price
   | 'price_not_recurring'       // eenmalig bedrag; geen abonnement
   | 'price_without_amount'      // bv. tiered pricing: geen bedrag om te tonen
@@ -314,14 +315,30 @@ export async function resolveSignupOffer(
   // prijzen; wordt een prijs gearchiveerd, dan komt de naam vrij voor zijn
   // opvolger. Zonder dit filter zou een oude, gearchiveerde prijs met dezelfde
   // naam kunnen terugkomen — met het oude bedrag.
+  // De fout van Stripe wordt NIET weggegooid.
+  //
+  // Hier stond één `catch` die alles op `price_not_found` gooide. Daardoor
+  // zagen drie verschillende oorzaken er identiek uit: een testmodus-sleutel
+  // (waar deze naam niet bestaat), een sleutel zonder leesrecht op prijzen, en
+  // een naam die echt nergens op wijst. Bij het eerste echte gebruik kostte dat
+  // een ronde heen en weer om te achterhalen welke van de drie het was.
+  //
+  // `zoekfout` gaat mee in `detail`, en `detail` staat in de serverlog én in
+  // het antwoord van /api/signup/offer. Dat is geen gevoelige informatie: het
+  // is de eigen configuratie, geen klantgegeven.
   let price: Stripe.Price | undefined;
   try {
     const lijst = await deps.stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
     price = lijst.data[0];
-  } catch {
+  } catch (e) {
+    const boodschap = e instanceof Error ? e.message : String(e);
+    return { ok: false, reason: 'price_zoekfout', detail: `${lookupKey}: ${boodschap}` };
+  }
+  if (!price) {
+    // Geen fout, gewoon geen resultaat: de sleutel werkt, maar in deze
+    // Stripe-modus bestaat er geen actieve prijs met deze naam.
     return { ok: false, reason: 'price_not_found', detail: lookupKey };
   }
-  if (!price) return { ok: false, reason: 'price_not_found', detail: lookupKey };
 
   const priceId = price.id;
   if (price.active === false) return { ok: false, reason: 'price_inactive', detail: priceId };
