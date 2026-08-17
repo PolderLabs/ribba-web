@@ -15,8 +15,6 @@ import { mock } from 'node:test';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://proj.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 process.env.STRIPE_SECRET_KEY = 'sk_test_x';
-process.env.STRIPE_PRICE_BASIC = 'price_basic';
-process.env.STRIPE_PRICE_PREMIUM = 'price_premium';
 
 let tabellen = {};
 let ingevoegd = [];
@@ -67,7 +65,12 @@ mock.module('@supabase/supabase-js', {
 mock.module('@/lib/stripe', {
   namedExports: {
     getStripe: () => ({
-      prices: { retrieve: async (id) => { if (!prices[id]) throw new Error('geen'); return prices[id]; } },
+      // Zoekt op lookup key, niet op id: een prijswijziging in Stripe kost dan
+      // geen omgevingsvariabele en geen deploy.
+      prices: { list: async ({ lookup_keys }) => {
+        const p = prices[lookup_keys[0]];
+        return { data: p ? [p] : [] };
+      } },
       // Stripe is sinds besluit 10 de enige bron voor campagnes: bestaat de
       // code, is hij actief, en wat doet de coupon eronder.
       promotionCodes: { list: async ({ code }) => {
@@ -104,12 +107,12 @@ function reset() {
     },
   };
   prices = {
-    price_basic: {
+    basic_standaard: {
       id: 'price_basic', active: true, currency: 'eur',
       recurring: { interval: 'month' }, unit_amount: 2500, tax_behavior: 'exclusive',
       metadata: { plan: 'basic', trial_interval: '1 month' },
     },
-    price_premium: {
+    premium_standaard: {
       id: 'price_premium', active: true, currency: 'eur',
       recurring: { interval: 'month' }, unit_amount: 4500, tax_behavior: 'exclusive',
       metadata: { plan: 'premium', trial_interval: '1 month' },
@@ -186,7 +189,7 @@ test('een bezet e-mailadres stopt vóór het mandaat', async () => {
 
 test('G5: een Price zonder plan-metadata levert nooit een betaalpagina op', async () => {
   reset();
-  prices.price_premium = { ...prices.price_premium, metadata: {} };
+  prices.premium_standaard = { ...prices.premium_standaard, metadata: {} };
   const res = await POST(verzoek());
   assert.equal(res.status, 503);
   assert.equal((await res.json()).reason, 'plan_metadata_missing');
@@ -196,7 +199,7 @@ test('G5: een Price zonder plan-metadata levert nooit een betaalpagina op', asyn
 
 test('G5: een verwisselde secret levert nooit een betaalpagina op', async () => {
   reset();
-  prices.price_premium = { ...prices.price_premium, metadata: { plan: 'basic' } };
+  prices.premium_standaard = { ...prices.premium_standaard, metadata: { plan: 'basic' } };
   const res = await POST(verzoek());
   assert.equal(res.status, 503);
   assert.equal((await res.json()).reason, 'plan_metadata_mismatch');
@@ -214,7 +217,7 @@ test('de Checkout krijgt een absolute trial_end, geen aantal dagen', async () =>
 
   reset();
   // Zonder trial_interval: geldig aanbod, direct betalen — geen verzonnen default.
-  prices.price_premium = { ...prices.price_premium, metadata: { plan: 'premium' } };
+  prices.premium_standaard = { ...prices.premium_standaard, metadata: { plan: 'premium' } };
   await POST(verzoek());
   assert.equal('trial_end' in sessies[0].subscription_data, false);
 });
@@ -396,7 +399,7 @@ test('de versies komen van de server, niet uit het verzoek', async () => {
 test('het akkoord wordt vastgelegd vóór er een Checkout bestaat', async () => {
   reset();
   // G5 faalt ná de akkoordcontrole: er mag dan niets zijn geschreven.
-  prices.price_premium = { ...prices.price_premium, metadata: {} };
+  prices.premium_standaard = { ...prices.premium_standaard, metadata: {} };
   const res = await POST(verzoek());
   assert.equal(res.status, 503);
   assert.equal(ingevoegd.length, 0);

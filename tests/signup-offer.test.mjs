@@ -21,11 +21,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   resolveSignupOffer,
-  priceIdForPlan,
+  lookupKeyForPlan,
   trialIntervalUitPrice,
 } from '../lib/signup-offer.ts';
 
-const ENV = { STRIPE_PRICE_BASIC: 'price_basic', STRIPE_PRICE_PREMIUM: 'price_premium' };
 const NU = new Date('2026-08-11T10:00:00.000Z');
 
 const geldigeBasic = {
@@ -54,30 +53,31 @@ const startgratis = {
 
 function deps(prices, promo = () => Promise.resolve(geenPromo)) {
   return {
-    stripe: { prices: { retrieve: async (id) => {
-      if (!prices[id]) throw new Error('No such price');
-      return prices[id];
+    stripe: { prices: { list: async ({ lookup_keys, active }) => {
+      assert.equal(active, true, 'gearchiveerde prijzen mogen niet meedoen');
+      const p = prices[lookup_keys[0]];
+      return { data: p ? [p] : [] };
     } } },
     valideerPromo: promo,
   };
 }
-const opt = (extra = {}) => ({ env: ENV, nu: NU, ...extra });
+const opt = (extra = {}) => ({ nu: NU, ...extra });
 
-test('routing: het secret bepaalt welke Price wordt opgehaald', () => {
-  assert.equal(priceIdForPlan('basic', ENV), 'price_basic');
-  assert.equal(priceIdForPlan('premium', ENV), 'price_premium');
-  assert.equal(priceIdForPlan('basic', {}), null);
+test('routing: de lookup key volgt uit de plannaam', () => {
+  // Afgeleid, niet uit een lijst: een nieuw pakket heeft hier niets nodig.
+  assert.equal(lookupKeyForPlan('basic'), 'basic_standaard');
+  assert.equal(lookupKeyForPlan('premium'), 'premium_standaard');
 });
 
 test('geldig aanbod: plan komt uit de metadata, niet uit het verzoek', async () => {
-  const r = await resolveSignupOffer(deps({ price_basic: geldigeBasic }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }), 'basic', opt());
   assert.equal(r.ok, true);
   assert.equal(r.plan, 'basic');
   assert.equal(r.priceId, 'price_basic');
 });
 
 test('bedragen: netto uit Stripe, bruto erbij gerekend, vandaag €0', async () => {
-  const r = await resolveSignupOffer(deps({ price_basic: geldigeBasic }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }), 'basic', opt());
   assert.equal(r.bedragen.nettoCenten, 2500);
   assert.equal(r.bedragen.btwCenten, 525);
   assert.equal(r.bedragen.brutoCenten, 3025);
@@ -87,21 +87,21 @@ test('bedragen: netto uit Stripe, bruto erbij gerekend, vandaag €0', async () 
 });
 
 test('Premium rekent net zo: €45 → €54,45', async () => {
-  const r = await resolveSignupOffer(deps({ price_premium: geldigePremium }), 'premium', opt());
+  const r = await resolveSignupOffer(deps({ premium_standaard: geldigePremium }), 'premium', opt());
   assert.equal(r.bedragen.nettoCenten, 4500);
   assert.equal(r.bedragen.brutoCenten, 5445);
 });
 
 test('zonder gratis periode is vandaag wél het brutobedrag verschuldigd', async () => {
   const zonderTrial = { ...geldigeBasic, metadata: { plan: 'basic' } };
-  const r = await resolveSignupOffer(deps({ price_basic: zonderTrial }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: zonderTrial }), 'basic', opt());
   assert.equal(r.ok, true);
   assert.equal(r.trial, null);
   assert.equal(r.vandaagVerschuldigdCenten, 3025);
 });
 
 test('de trial is een kalendermaand, met de zin en de datum erbij', async () => {
-  const r = await resolveSignupOffer(deps({ price_basic: geldigeBasic }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }), 'basic', opt());
   assert.equal(r.trial.tekst, '1 maand gratis');
   assert.equal(r.trial.eersteIncassoISO, '2026-09-11T10:00:00.000Z');
   assert.equal(r.trial.trialEndUnix, Math.floor(Date.parse('2026-09-11T10:00:00.000Z') / 1000));
@@ -111,12 +111,12 @@ test('de trial is een kalendermaand, met de zin en de datum erbij', async () => 
 test('STARTGRATIS is een coupon en VERVANGT de trial', async () => {
   const promo = async (code) => (code === 'STARTGRATIS' ? startgratis : geenPromo);
 
-  for (const [plan, price, id] of [
-    ['basic', geldigeBasic, 'price_basic'],
-    ['premium', geldigePremium, 'price_premium'],
+  for (const [plan, price] of [
+    ['basic', geldigeBasic],
+    ['premium', geldigePremium],
   ]) {
     const r = await resolveSignupOffer(
-      deps({ [id]: price }, promo), plan, opt({ promoCode: 'startgratis' }),
+      deps({ [`${plan}_standaard`]: price }, promo), plan, opt({ promoCode: 'startgratis' }),
     );
     assert.equal(r.ok, true, plan);
     // DIT is de kern: geen trial naast de coupon.
@@ -136,7 +136,7 @@ test('een gedeeltelijke korting toont het restbedrag, geen \u20ac0', async () =>
     coupon: { percentOff: 20, amountOffCenten: null, duur: 'repeating', duurMaanden: 3, valuta: null },
   });
   const r = await resolveSignupOffer(
-    deps({ price_premium: geldigePremium }, promo), 'premium', opt({ promoCode: 'WELKOM20' }),
+    deps({ premium_standaard: geldigePremium }, promo), 'premium', opt({ promoCode: 'WELKOM20' }),
   );
   assert.equal(r.ok, true);
   assert.equal(r.trial, null);
@@ -151,7 +151,7 @@ test('een vast bedrag korting rekent op het NETTO, net als Stripe', async () => 
     coupon: { percentOff: null, amountOffCenten: 1000, duur: 'once', duurMaanden: null, valuta: 'EUR' },
   });
   const r = await resolveSignupOffer(
-    deps({ price_premium: geldigePremium }, promo), 'premium', opt({ promoCode: 'TIENEURO' }),
+    deps({ premium_standaard: geldigePremium }, promo), 'premium', opt({ promoCode: 'TIENEURO' }),
   );
   // \u20ac45 - \u20ac10 = \u20ac35 \u2192 + 21% = \u20ac42,35. Stripe kort v\u00f3\u00f3r de btw.
   assert.equal(r.vandaagVerschuldigdCenten, 4235);
@@ -160,7 +160,7 @@ test('een vast bedrag korting rekent op het NETTO, net als Stripe', async () => 
 
 test('een ongeldige code blokkeert de inschrijving niet, maar telt ook niet mee', async () => {
   const r = await resolveSignupOffer(
-    deps({ price_basic: geldigeBasic }), 'basic', opt({ promoCode: 'BESTAATNIET' }),
+    deps({ basic_standaard: geldigeBasic }), 'basic', opt({ promoCode: 'BESTAATNIET' }),
   );
   assert.equal(r.ok, true);
   assert.equal(r.promoGeweigerd, true);
@@ -172,9 +172,9 @@ test('een ongeldige code blokkeert de inschrijving niet, maar telt ook niet mee'
 test('de promotabel wordt alleen geraadpleegd als er een code is ingevuld', async () => {
   let aangeroepen = 0;
   const promo = async () => { aangeroepen++; return geenPromo; };
-  await resolveSignupOffer(deps({ price_basic: geldigeBasic }, promo), 'basic', opt());
+  await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }, promo), 'basic', opt());
   assert.equal(aangeroepen, 0);
-  await resolveSignupOffer(deps({ price_basic: geldigeBasic }, promo), 'basic', opt({ promoCode: '  ' }));
+  await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }, promo), 'basic', opt({ promoCode: '  ' }));
   assert.equal(aangeroepen, 0, 'witruimte is geen code');
 });
 
@@ -183,7 +183,7 @@ test('NULPRIJS-POORT: een terugkerende Price van €0 wordt hard geweigerd', asy
   // plan-metadata zou een verwisselde secret een rijschool voor altijd gratis
   // laten draaien, met werkend entitlement en dus volledig onzichtbaar.
   const nul = { ...geldigeBasic, unit_amount: 0 };
-  const r = await resolveSignupOffer(deps({ price_basic: nul }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: nul }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'price_zero_amount');
 });
@@ -191,27 +191,27 @@ test('NULPRIJS-POORT: een terugkerende Price van €0 wordt hard geweigerd', asy
 test('een Price zonder expliciet btw-gedrag wordt geweigerd', async () => {
   // Op `unspecified` weigert Stripe de Checkout zodra automatische btw aanstaat.
   const onbepaald = { ...geldigeBasic, tax_behavior: 'unspecified' };
-  const r = await resolveSignupOffer(deps({ price_basic: onbepaald }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: onbepaald }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'tax_behavior_unspecified');
 });
 
 test('een Price zonder bedrag levert geen kaart op', async () => {
   const tiered = { ...geldigeBasic, unit_amount: null };
-  const r = await resolveSignupOffer(deps({ price_basic: tiered }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: tiered }), 'basic', opt());
   assert.equal(r.reason, 'price_without_amount');
 });
 
 test('G5: een Price zonder plan-metadata komt niet in een Checkout', async () => {
   const zonder = { ...geldigeBasic, metadata: { trial_interval: '1 month' } };
-  const r = await resolveSignupOffer(deps({ price_basic: zonder }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: zonder }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'plan_metadata_missing');
 });
 
 test('G5: een onbekende planwaarde is een fout, geen gok', async () => {
   const fout = { ...geldigeBasic, metadata: { plan: 'gold' } };
-  const r = await resolveSignupOffer(deps({ price_basic: fout }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: fout }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'plan_metadata_invalid');
 });
@@ -219,25 +219,26 @@ test('G5: een onbekende planwaarde is een fout, geen gok', async () => {
 test('G5: metadata die niet overeenkomt met de keuze wordt geweigerd', async () => {
   // Verwisselde secret: STRIPE_PRICE_BASIC wijst naar de Premium-Price.
   const verwisseld = { ...geldigePremium, id: 'price_basic' };
-  const r = await resolveSignupOffer(deps({ price_basic: verwisseld }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: verwisseld }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'plan_metadata_mismatch');
   assert.match(r.detail, /gekozen=basic/);
 });
 
-test('een ontbrekend of onvindbaar secret levert geen Checkout op', async () => {
-  const a = await resolveSignupOffer(deps({}), 'basic', { env: {}, nu: NU });
-  assert.equal(a.reason, 'price_not_configured');
-  const b = await resolveSignupOffer(deps({}), 'basic', opt());
-  assert.equal(b.reason, 'price_not_found');
+test('een lookup key die nergens op wijst levert geen Checkout op', async () => {
+  // Bijvoorbeeld: de prijs is gearchiveerd en de naam is niet meegehuisd.
+  // Dan liever hier stoppen dan een willekeurige andere prijs pakken.
+  const r = await resolveSignupOffer(deps({}), 'basic', opt());
+  assert.equal(r.reason, 'price_not_found');
+  assert.equal(r.detail, 'basic_standaard');
 });
 
 test('een gearchiveerde of eenmalige Price wordt geweigerd', async () => {
   const gearchiveerd = { ...geldigeBasic, active: false };
-  assert.equal((await resolveSignupOffer(deps({ price_basic: gearchiveerd }), 'basic', opt())).reason,
+  assert.equal((await resolveSignupOffer(deps({ basic_standaard: gearchiveerd }), 'basic', opt())).reason,
     'price_inactive');
   const eenmalig = { ...geldigeBasic, recurring: null };
-  assert.equal((await resolveSignupOffer(deps({ price_basic: eenmalig }), 'basic', opt())).reason,
+  assert.equal((await resolveSignupOffer(deps({ basic_standaard: eenmalig }), 'basic', opt())).reason,
     'price_not_recurring');
 });
 
@@ -254,7 +255,7 @@ test('trial_interval wordt gelezen, niet geïnterpreteerd', () => {
 
 test('een onleesbare duur op de Price stopt het aanbod', async () => {
   const kapot = { ...geldigeBasic, metadata: { plan: 'basic', trial_interval: '30 dagen' } };
-  const r = await resolveSignupOffer(deps({ price_basic: kapot }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: kapot }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'trial_interval_invalid');
 });
@@ -263,7 +264,7 @@ test('een geldige code met kapotte configuratie valt niet stil terug', async () 
   // De klant heeft een geldige code; hem stilzwijgend één maand geven in
   // plaats van zes is erger dan stoppen.
   const promo = async () => ({ geldig: false, configuratiefout: 'coupon STUK: kort niets' });
-  const r = await resolveSignupOffer(deps({ price_basic: geldigeBasic }, promo), 'basic', opt({ promoCode: 'STUK' }));
+  const r = await resolveSignupOffer(deps({ basic_standaard: geldigeBasic }, promo), 'basic', opt({ promoCode: 'STUK' }));
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'coupon_onbruikbaar');
   assert.match(r.detail, /STUK/);
@@ -271,7 +272,7 @@ test('een geldige code met kapotte configuratie valt niet stil terug', async () 
 
 test('een duur korter dan 48 uur wordt geweigerd — Stripe zou hem afwijzen', async () => {
   const kort = { ...geldigeBasic, metadata: { plan: 'basic', trial_interval: '1 day' } };
-  const r = await resolveSignupOffer(deps({ price_basic: kort }), 'basic', opt());
+  const r = await resolveSignupOffer(deps({ basic_standaard: kort }), 'basic', opt());
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'trial_te_kort');
 });

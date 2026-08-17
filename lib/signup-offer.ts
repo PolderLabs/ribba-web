@@ -16,13 +16,26 @@
 //
 // ── DRIE BRONNEN, STRIKT GESCHEIDEN ─────────────────────────────────────────
 //
-//   ROUTING      welke Price → STRIPE_PRICE_PREMIUM (secret)
+//   ROUTING      welke Price → de lookup key `<plan>_standaard`
 //   ENTITLEMENT  welke rechten → UITSLUITEND `plan`-metadata op de Price
 //   GRATIS       hoe lang / hoeveel → `trial_interval` op de Price voor het
 //                standaardaanbod, of een Coupon voor een campagne
 //
-// De Price-ID-secrets zijn routing en nooit een bron van rechten. Daardoor kan
-// een prijswijziging in Stripe zonder release.
+// ── WAAROM EEN LOOKUP KEY EN GEEN PRICE-ID ──────────────────────────────────
+//
+// Een bedrag op een Stripe-Price is ONVERANDERLIJK. Van €45 naar €50 betekent
+// dus altijd een NIEUWE Price met een nieuw id. Stond dat id in een
+// omgevingsvariabele, dan moest die bij elke prijswijziging worden omgezet —
+// één handeling in Ribba bij een besluit dat alleen over Stripe gaat, en
+// precies het soort stap dat je vergeet.
+//
+// Een lookup key is een naam die JIJ aan een Price hangt. Bij een prijswijziging
+// versleep je de naam in Stripe naar de nieuwe Price; hier verandert niets.
+// Geen variabele, geen deploy, geen handeling. En een nieuw pakket heeft geen
+// eigen variabele nodig: de naam volgt uit de plannaam.
+//
+// De naam is routing en nooit een bron van rechten — die komen uit
+// `plan`-metadata, en G5 hieronder bewaakt dat ze overeenkomen.
 //
 // ── TWEE MECHANISMEN, DIE ELKAAR UITSLUITEN ─────────────────────────────────
 //
@@ -69,8 +82,7 @@ import {
 export const TRIAL_INTERVAL_METADATA_KEY = 'trial_interval';
 
 export type OfferFailure =
-  | 'price_not_configured'      // secret ontbreekt
-  | 'price_not_found'           // secret wijst nergens heen
+  | 'price_not_found'           // geen actieve Price met deze lookup key
   | 'price_inactive'            // gearchiveerde Price
   | 'price_not_recurring'       // eenmalig bedrag; geen abonnement
   | 'price_without_amount'      // bv. tiered pricing: geen bedrag om te tonen
@@ -176,17 +188,17 @@ export type OfferOpties = {
   promoCode?: string | null;
   /** Injecteerbaar zodat de kalenderrekensom testbaar is. */
   nu?: Date;
-  env?: NodeJS.ProcessEnv;
 };
 
-/** Routing: welk secret hoort bij welk plan. Géén entitlementbetekenis. */
-export function priceIdForPlan(
-  plan: SignupPlan,
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
-  const raw = plan === 'basic' ? env.STRIPE_PRICE_BASIC : env.STRIPE_PRICE_PREMIUM;
-  const id = typeof raw === 'string' ? raw.trim() : '';
-  return id === '' ? null : id;
+/**
+ * Routing: onder welke naam staat de standaardprijs van dit plan in Stripe.
+ *
+ * Afgeleid van de plannaam, niet uit een lijst of een variabele — dan hoeft er
+ * bij een nieuw pakket niets aan deze kant bij. Géén entitlementbetekenis: dat
+ * blijft `plan`-metadata op de Price, bewaakt door G5.
+ */
+export function lookupKeyForPlan(plan: SignupPlan): string {
+  return `${plan}_standaard`;
 }
 
 /** De standaardduur zoals die op de Price staat. */
@@ -295,19 +307,23 @@ export async function resolveSignupOffer(
   plan: SignupPlan,
   opties: OfferOpties = {},
 ): Promise<OfferResult> {
-  const env = opties.env ?? process.env;
   const nu = opties.nu ?? new Date();
+  const lookupKey = lookupKeyForPlan(plan);
 
-  const priceId = priceIdForPlan(plan, env);
-  if (!priceId) return { ok: false, reason: 'price_not_configured', detail: plan };
-
-  let price: Stripe.Price;
+  // `active: true` staat er bewust bij. Een lookup key is uniek onder ACTIEVE
+  // prijzen; wordt een prijs gearchiveerd, dan komt de naam vrij voor zijn
+  // opvolger. Zonder dit filter zou een oude, gearchiveerde prijs met dezelfde
+  // naam kunnen terugkomen — met het oude bedrag.
+  let price: Stripe.Price | undefined;
   try {
-    price = await deps.stripe.prices.retrieve(priceId);
+    const lijst = await deps.stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+    price = lijst.data[0];
   } catch {
-    return { ok: false, reason: 'price_not_found', detail: priceId };
+    return { ok: false, reason: 'price_not_found', detail: lookupKey };
   }
+  if (!price) return { ok: false, reason: 'price_not_found', detail: lookupKey };
 
+  const priceId = price.id;
   if (price.active === false) return { ok: false, reason: 'price_inactive', detail: priceId };
   if (!price.recurring) return { ok: false, reason: 'price_not_recurring', detail: priceId };
 
