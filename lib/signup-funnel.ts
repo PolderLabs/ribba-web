@@ -58,6 +58,21 @@ export const wachtwoordBijInschrijven = ACTIEVE_SIGNUP_ROUTE === OUDE_SIGNUP_ROU
 export const promoBeschikbaar = ACTIEVE_SIGNUP_ROUTE === NIEUWE_SIGNUP_ROUTE;
 
 /**
+ * Kan de inschrijving zonder een aanbod uit Stripe?
+ *
+ * Op de NIEUWE route niet: daar bepaalt het aanbod welke Price en welke korting
+ * naar Checkout gaan, en weigert de route met dezelfde reden. De knop hoort dan
+ * uit te staan.
+ *
+ * Op de OUDE route wel. Die maakt zelf een school en een licentie aan en raakt
+ * Stripe niet aan; het aanbodblok is daar uitsluitend versiering. Zou een
+ * storing bij Stripe daar de knop uitschakelen, dan blokkeren we inschrijvingen
+ * die het gewoon zouden hebben gered — een storing in iets waar dit pad niet
+ * van afhangt.
+ */
+export const aanbodVereistVoorInschrijven = ACTIEVE_SIGNUP_ROUTE === NIEUWE_SIGNUP_ROUTE;
+
+/**
  * Wat de verzendknop belooft.
  *
  * Ook afgeleid, en om dezelfde reden als de rest: de knop moet zeggen wat er

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 // honoreren. Afgeleid, niet los instelbaar. Zie lib/signup-funnel.ts.
 import {
   ACTIEVE_SIGNUP_ROUTE,
+  aanbodVereistVoorInschrijven,
   promoBeschikbaar,
   verzendknopLabel,
   wachtwoordBijInschrijven,
@@ -997,8 +998,11 @@ export default function SchoolRegistrationForm() {
       {/* Kan het aanbod niet worden opgehaald, dan kan de inschrijving ook
           niet slagen: de route weigert dan met dezelfde reden. Hier stoppen is
           eerlijker dan iemand adres, KVK-nummer en drie akkoorden laten
-          invullen om hem daarna alsnog af te wijzen. */}
-      {aanbodFout && (
+          invullen om hem daarna alsnog af te wijzen.
+
+          Alleen op de nieuwe route. De oude raakt Stripe niet aan — daar zou
+          deze melding liegen én de knop onnodig blokkeren. */}
+      {aanbodVereistVoorInschrijven && aanbodFout && (
         <div className="alert alert-error" style={{ marginTop: 20 }}>
           Inschrijven lukt nu niet — we kunnen het actuele aanbod niet ophalen.
           Probeer het later opnieuw of mail <a href="mailto:team@ribba.app">team@ribba.app</a>.
@@ -1015,7 +1019,7 @@ export default function SchoolRegistrationForm() {
         <button
           type="submit"
           className="btn-primary"
-          disabled={submitting || aanbodFout || !aanbod}
+          disabled={submitting || (aanbodVereistVoorInschrijven && (aanbodFout || !aanbod))}
           style={{ marginTop: 0 }}
         >
           {submitting ? (

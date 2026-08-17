@@ -84,3 +84,16 @@ test('de verzendknop belooft wat er echt gebeurt', async () => {
     assert.doesNotMatch(registratieIntro, /begin direct/);
   }
 });
+
+test('een Stripe-storing blokkeert de OUDE route nooit', async () => {
+  const { ACTIEVE_SIGNUP_ROUTE, OUDE_SIGNUP_ROUTE, aanbodVereistVoorInschrijven } =
+    await import('../lib/signup-funnel.ts');
+
+  // De oude route maakt zelf een school aan en raakt Stripe niet aan. Zou een
+  // mislukt aanbod daar de knop uitschakelen, dan blokkeren we inschrijvingen
+  // die het gewoon zouden hebben gered.
+  assert.equal(
+    aanbodVereistVoorInschrijven,
+    ACTIEVE_SIGNUP_ROUTE !== OUDE_SIGNUP_ROUTE,
+  );
+});
