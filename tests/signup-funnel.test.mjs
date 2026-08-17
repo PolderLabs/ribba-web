@@ -66,3 +66,21 @@ test('op de nieuwe route kan het wachtwoordveld nooit terugkomen', () => {
     assert.equal(wachtwoordBijInschrijven, false);
   }
 });
+
+// ── De belofte van de knop volgt de route ───────────────────────────────────
+
+test('de verzendknop belooft wat er echt gebeurt', async () => {
+  const { ACTIEVE_SIGNUP_ROUTE, OUDE_SIGNUP_ROUTE, verzendknopLabel, registratieIntro } =
+    await import('../lib/signup-funnel.ts');
+
+  if (ACTIEVE_SIGNUP_ROUTE === OUDE_SIGNUP_ROUTE) {
+    // Oude route: het account ontstaat meteen, dus dat mag de knop zeggen.
+    assert.equal(verzendknopLabel, 'Account aanmaken');
+    assert.match(registratieIntro, /begin direct/);
+  } else {
+    // Nieuwe route: er ontstaat hier géén account. Zou de knop dat toch
+    // beloven, dan klopt hij pas twee stappen later.
+    assert.notEqual(verzendknopLabel, 'Account aanmaken');
+    assert.doesNotMatch(registratieIntro, /begin direct/);
+  }
+});
