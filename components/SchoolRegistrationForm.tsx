@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
   ACTIEVE_SIGNUP_ROUTE,
   promoBeschikbaar,
+  verzendknopLabel,
   wachtwoordBijInschrijven,
 } from '@/lib/signup-funnel';
 
@@ -482,7 +483,13 @@ export default function SchoolRegistrationForm() {
                         type="text"
                         value={codeInvoer}
                         autoComplete="off"
-                        placeholder="Bijvoorbeeld STARTGRATIS"
+                        // BEWUST GEEN VOORBEELDCODE. Hier stond
+                        // "Bijvoorbeeld STARTGRATIS", en daarmee gaf de
+                        // inschrijfpagina de lopende campagne weg aan iedere
+                        // bezoeker. Een actiecode is gericht: hij hoort bij de
+                        // rijscholen die je ermee wilt binnenhalen, niet bij
+                        // wie toevallig het formulier opent.
+                        placeholder=""
                         onChange={(e) => { setCodeInvoer(e.target.value); setCodeGeweigerd(false); }}
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter') return;
@@ -987,15 +994,37 @@ export default function SchoolRegistrationForm() {
         </div>
       )}
 
+      {/* Kan het aanbod niet worden opgehaald, dan kan de inschrijving ook
+          niet slagen: de route weigert dan met dezelfde reden. Hier stoppen is
+          eerlijker dan iemand adres, KVK-nummer en drie akkoorden laten
+          invullen om hem daarna alsnog af te wijzen. */}
+      {aanbodFout && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          Inschrijven lukt nu niet — we kunnen het actuele aanbod niet ophalen.
+          Probeer het later opnieuw of mail <a href="mailto:team@ribba.app">team@ribba.app</a>.
+        </div>
+      )}
+
+      {serverError && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          {serverError}
+        </div>
+      )}
+
       <div className="form-submit">
-        <button type="submit" className="btn-primary" disabled={submitting} style={{ marginTop: 0 }}>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={submitting || aanbodFout || !aanbod}
+          style={{ marginTop: 0 }}
+        >
           {submitting ? (
             <>
               <span className="spinner" />
-              Bezig met aanmaken...
+              Bezig…
             </>
           ) : (
-            'Account aanmaken'
+            verzendknopLabel
           )}
         </button>
       </div>
