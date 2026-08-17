@@ -217,7 +217,9 @@ test('G5: een onbekende planwaarde is een fout, geen gok', async () => {
 });
 
 test('G5: metadata die niet overeenkomt met de keuze wordt geweigerd', async () => {
-  // Verwisselde secret: STRIPE_PRICE_BASIC wijst naar de Premium-Price.
+  // De lookup key `basic_standaard` hangt aan de Premium-Price. Dat kan door
+  // een verkeerd versleepte naam in Stripe, en het mag nooit doorgaan: iemand
+  // zou Basic verwachten en Premium-rechten krijgen, of andersom.
   const verwisseld = { ...geldigePremium, id: 'price_basic' };
   const r = await resolveSignupOffer(deps({ basic_standaard: verwisseld }), 'basic', opt());
   assert.equal(r.ok, false);
