@@ -279,7 +279,35 @@ export async function POST(request: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: aanbod.priceId, quantity: 1 }],
-      payment_method_types: ['ideal', 'sepa_debit'],
+      // ── GEEN payment_method_types — Stripe bepaalt dit zelf ──────────────
+      //
+      // Hier stond ['ideal', 'sepa_debit']. Daarmee zetten we Stripe's eigen
+      // selectie buitenspel: die kiest normaal per sessie welke methoden
+      // geldig zijn, gegeven bedrag, valuta, modus en account.
+      //
+      // Dat brak de inschrijving. Bij een verschuldigd bedrag van 0,00 EUR is
+      // iDEAL geen geldige keuze -- het is een EENMALIGE methode en kan geen
+      // bevestiging van nul afronden. Wij dwongen hem er toch in, Stripe toonde
+      // hem gehoorzaam, en klapte om bij het bevestigen:
+      //
+      //   POST /v1/payment_pages/{sessie}/confirm
+      //   HTTP 500 -- {"error":{"message":"An unknown error occurred",
+      //                         "type":"api_error"}}
+      //   met expected_amount "0" en payment_method_selection_flow
+      //   "merchant_specified" -- Stripe zegt daar letterlijk dat WIJ de
+      //   methode hebben opgedrongen.
+      //
+      // Gemeten op 18 aug 2026, twee keer, veertien uur uit elkaar, en zowel
+      // MET actiecode (discounts) als ZONDER (trial_end). Het ligt dus niet aan
+      // de coupon maar aan het bedrag van nul. SEPA-incasso op exact dezelfde
+      // sessie slaagde wel.
+      //
+      // Dit sluit iDEAL niet uit; het stopt met het TONEN van een methode die
+      // niet kan werken. Wordt hij bruikbaar bij 0,00 EUR, dan verschijnt hij
+      // vanzelf weer -- zonder codewijziging. Welke methoden er verder
+      // verschijnen beheer je in het Stripe-dashboard bij Betaalmethoden.
+      //
+      // Zet dit niet terug zonder te weten waarom het weg is.
       automatic_tax: { enabled: true },
       customer_email: emailNorm,
       client_reference_id: pendingId,
