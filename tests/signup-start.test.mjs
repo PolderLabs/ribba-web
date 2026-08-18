@@ -451,3 +451,23 @@ test('rommel in attribution levert null op, geen fout', async () => {
     assert.equal(ingevoegd[0].rij.signup_attribution, null);
   }
 });
+
+// ── Betaalmethoden zijn van Stripe ──────────────────────────────────────────
+
+test('de Checkout krijgt GEEN payment_method_types opgedrongen', async () => {
+  // Hier stond ['ideal','sepa_debit']. Bij een verschuldigd bedrag van €0 is
+  // iDEAL geen geldige keuze — het is een eenmalige methode — maar door hem
+  // expliciet mee te sturen toonde Stripe hem tóch, en gaf dan een HTTP 500
+  // bij het bevestigen. Gemeten in productie op 18 aug 2026, met én zonder
+  // actiecode.
+  //
+  // Zonder dit veld bepaalt Stripe per sessie wat geldig is. Deze test bestaat
+  // zodat niemand het "voor de zekerheid" terugzet.
+  reset();
+  await POST(verzoek());
+  assert.equal('payment_method_types' in sessies[0], false);
+
+  reset();
+  await POST(verzoek({ promo_code: 'STARTGRATIS' }));
+  assert.equal('payment_method_types' in sessies[0], false, 'ook met actiecode');
+});
