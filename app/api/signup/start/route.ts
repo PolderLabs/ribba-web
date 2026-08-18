@@ -279,35 +279,39 @@ export async function POST(request: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: aanbod.priceId, quantity: 1 }],
-      // ── GEEN payment_method_types — Stripe bepaalt dit zelf ──────────────
+      // ── TIJDELIJK: ALLEEN SEPA-INCASSO ───────────────────────────────────
       //
-      // Hier stond ['ideal', 'sepa_debit']. Daarmee zetten we Stripe's eigen
-      // selectie buitenspel: die kiest normaal per sessie welke methoden
-      // geldig zijn, gegeven bedrag, valuta, modus en account.
+      // Dit hoort hier niet te staan. Normaal bepaalt Stripe zelf welke
+      // betaalmethoden geldig zijn voor een sessie, en dat is ook de bedoeling:
+      // dan komen nieuwe methoden er vanzelf bij en wordt er nooit iets getoond
+      // wat niet kan.
       //
-      // Dat brak de inschrijving. Bij een verschuldigd bedrag van 0,00 EUR is
-      // iDEAL geen geldige keuze -- het is een EENMALIGE methode en kan geen
-      // bevestiging van nul afronden. Wij dwongen hem er toch in, Stripe toonde
-      // hem gehoorzaam, en klapte om bij het bevestigen:
+      // Waarom het er tóch staat. Op 18 aug 2026 faalt iDEAL bij een
+      // verschuldigd bedrag van 0,00 EUR met:
       //
       //   POST /v1/payment_pages/{sessie}/confirm
-      //   HTTP 500 -- {"error":{"message":"An unknown error occurred",
-      //                         "type":"api_error"}}
-      //   met expected_amount "0" en payment_method_selection_flow
-      //   "merchant_specified" -- Stripe zegt daar letterlijk dat WIJ de
-      //   methode hebben opgedrongen.
+      //   HTTP 500 -- "An unknown error occurred", type api_error
       //
-      // Gemeten op 18 aug 2026, twee keer, veertien uur uit elkaar, en zowel
-      // MET actiecode (discounts) als ZONDER (trial_end). Het ligt dus niet aan
-      // de coupon maar aan het bedrag van nul. SEPA-incasso op exact dezelfde
-      // sessie slaagde wel.
+      // Gemeten in drie varianten, en alle drie falen:
+      //   1. wij gaven ['ideal','sepa_debit'] mee, MET coupon (discounts)
+      //   2. idem, ZONDER coupon (trial_end)
+      //   3. ZONDER payment_method_types, dus met Stripe's eigen selectie --
+      //      die bood toen uitsluitend iDEAL aan, en die faalde net zo goed
       //
-      // Dit sluit iDEAL niet uit; het stopt met het TONEN van een methode die
-      // niet kan werken. Wordt hij bruikbaar bij 0,00 EUR, dan verschijnt hij
-      // vanzelf weer -- zonder codewijziging. Welke methoden er verder
-      // verschijnen beheer je in het Stripe-dashboard bij Betaalmethoden.
+      // Variant 3 is de reden dat dit veld terug moest. Zonder dit veld toont
+      // Stripe namelijk ALLEEN iDEAL en geen SEPA, en dan kan er niemand meer
+      // inschrijven. Met dit veld is er tenminste een werkende weg: SEPA-incasso
+      // is op 18 aug in productie bewezen, inclusief een geldig herbruikbaar
+      // mandaat op de subscription.
       //
-      // Zet dit niet terug zonder te weten waarom het weg is.
+      // Er loopt een melding bij Stripe support: hun eigen methodeselectie biedt
+      // hier een methode aan die vervolgens niet bevestigd kan worden.
+      //
+      // WEGHALEN ZODRA IDEAL BIJ 0,00 EUR WERKT. Dit veld is een pleister, geen
+      // ontwerpkeuze -- het zet Stripe's selectie buitenspel, en dat willen we
+      // niet houden. Controleer dat met een echte inschrijving, niet met een
+      // aanname.
+      payment_method_types: ['sepa_debit'],
       automatic_tax: { enabled: true },
       customer_email: emailNorm,
       client_reference_id: pendingId,

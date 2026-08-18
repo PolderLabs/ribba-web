@@ -454,20 +454,22 @@ test('rommel in attribution levert null op, geen fout', async () => {
 
 // ── Betaalmethoden zijn van Stripe ──────────────────────────────────────────
 
-test('de Checkout krijgt GEEN payment_method_types opgedrongen', async () => {
-  // Hier stond ['ideal','sepa_debit']. Bij een verschuldigd bedrag van €0 is
-  // iDEAL geen geldige keuze — het is een eenmalige methode — maar door hem
-  // expliciet mee te sturen toonde Stripe hem tóch, en gaf dan een HTTP 500
-  // bij het bevestigen. Gemeten in productie op 18 aug 2026, met én zonder
-  // actiecode.
+test('de Checkout biedt tijdelijk alleen SEPA-incasso aan', async () => {
+  // Dit is een PLEISTER, geen ontwerpkeuze. Normaal laten we Stripe zelf
+  // bepalen welke methoden geldig zijn.
   //
-  // Zonder dit veld bepaalt Stripe per sessie wat geldig is. Deze test bestaat
-  // zodat niemand het "voor de zekerheid" terugzet.
+  // Maar op 18 aug 2026 faalt iDEAL bij een verschuldigd bedrag van EUR 0,00
+  // met een HTTP 500, en dat gebeurt ook wanneer Stripe de methode ZELF kiest.
+  // Zonder dit veld biedt Stripe uitsluitend iDEAL aan en kan er dus niemand
+  // inschrijven. SEPA-incasso is wel bewezen, inclusief geldig mandaat.
+  //
+  // Deze test bewaakt niet dat dit zo hoort, maar dat het bewust zo staat.
+  // Werkt iDEAL weer, dan hoort dit veld weg en deze test mee.
   reset();
   await POST(verzoek());
-  assert.equal('payment_method_types' in sessies[0], false);
+  assert.deepEqual(sessies[0].payment_method_types, ['sepa_debit']);
 
   reset();
   await POST(verzoek({ promo_code: 'STARTGRATIS' }));
-  assert.equal('payment_method_types' in sessies[0], false, 'ook met actiecode');
+  assert.deepEqual(sessies[0].payment_method_types, ['sepa_debit'], 'ook met actiecode');
 });
