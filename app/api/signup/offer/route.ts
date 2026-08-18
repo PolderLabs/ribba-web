@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
       bedragen: aanbod.bedragen,
       /** 0 tijdens een gratis periode. Dit hoort visueel het prominentst. */
       vandaagVerschuldigdCenten: aanbod.vandaagVerschuldigdCenten,
+      vandaagVerschuldigdNettoCenten: aanbod.vandaagVerschuldigdNettoCenten,
       /** Gevuld bij het standaardaanbod; null wanneer een actie het overneemt. */
       trial: aanbod.trial,
       /** Gevuld bij een actie; sluit `trial` uit. Bevat de zin voor het scherm. */

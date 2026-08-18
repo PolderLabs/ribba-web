@@ -5,7 +5,9 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 // honoreren. Afgeleid, niet los instelbaar. Zie lib/signup-funnel.ts.
 import {
   ACTIEVE_SIGNUP_ROUTE,
+  aanbodVereistVoorInschrijven,
   promoBeschikbaar,
+  verzendknopLabel,
   wachtwoordBijInschrijven,
 } from '@/lib/signup-funnel';
 
@@ -37,6 +39,8 @@ type Aanbod = {
   };
   /** 0 tijdens een gratis periode. Hoort visueel het prominentst. */
   vandaagVerschuldigdCenten: number;
+  /** Hetzelfde bedrag netto — de kaart spreekt consequent exclusief btw. */
+  vandaagVerschuldigdNettoCenten: number;
   /** Het standaardaanbod. null zodra een actie het overneemt. */
   trial: { tekst: string; eersteIncassoISO: string } | null;
   /** Een actie. Sluit `trial` uit. `tekst` komt van de server. */
@@ -172,6 +176,7 @@ export default function SchoolRegistrationForm() {
         setAanbod({
           bedragen: d.bedragen,
           vandaagVerschuldigdCenten: d.vandaagVerschuldigdCenten,
+          vandaagVerschuldigdNettoCenten: d.vandaagVerschuldigdNettoCenten,
           trial: d.trial ?? null,
           korting: d.korting ?? null,
         });
@@ -482,7 +487,13 @@ export default function SchoolRegistrationForm() {
                         type="text"
                         value={codeInvoer}
                         autoComplete="off"
-                        placeholder="Bijvoorbeeld STARTGRATIS"
+                        // BEWUST GEEN VOORBEELDCODE. Hier stond
+                        // "Bijvoorbeeld STARTGRATIS", en daarmee gaf de
+                        // inschrijfpagina de lopende campagne weg aan iedere
+                        // bezoeker. Een actiecode is gericht: hij hoort bij de
+                        // rijscholen die je ermee wilt binnenhalen, niet bij
+                        // wie toevallig het formulier opent.
+                        placeholder=""
                         onChange={(e) => { setCodeInvoer(e.target.value); setCodeGeweigerd(false); }}
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter') return;
@@ -553,24 +564,32 @@ export default function SchoolRegistrationForm() {
                     </span>
                   )}
 
-                  {/* Netto prominent: dat is de commerciële prijs die we
-                      communiceren, en de rijschool is btw-plichtig. */}
+                  {/* ── ALLES EXCLUSIEF BTW (besluit Önder, 17 aug) ────────
+                      Ribba verkoopt aan rijschoolhouders, en die zijn
+                      btw-plichtig: voor hen is het nettobedrag de prijs. Twee
+                      bedragen naast elkaar tonen maakt het duurder dan het
+                      voelt, zonder dat de tweede iets toevoegt.
+
+                      Bij het afrekenen laat Stripe het bedrag inclusief btw
+                      zien. Dat is geen verrassing maar de wettelijke plicht op
+                      het moment dat er daadwerkelijk wordt geïncasseerd, en
+                      daar hoort het ook thuis. */}
                   <span style={{ display: 'block', fontSize: 14, color: '#57534E' }}>
                     {aanbod.trial || aanbod.korting ? 'Daarna ' : ''}
                     {bedrag(aanbod.bedragen.nettoCenten, aanbod.bedragen.valuta)} per maand excl. btw
-                  </span>
-                  {/* Bruto eronder, zodat niemand bij Checkout schrikt. */}
-                  <span style={{ display: 'block', fontSize: 13, color: '#78716C' }}>
-                    {bedrag(aanbod.bedragen.brutoCenten, aanbod.bedragen.valuta)} incl. btw
                   </span>
                 </span>
                 <span style={{
                   fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap',
                   color: aanbod.vandaagVerschuldigdCenten === 0 ? '#15803D' : '#57534E',
                 }}>
+                  {/* Nul is nul, met of zonder btw — daar hoort geen
+                      toevoeging bij. Is er wél iets verschuldigd, dan staat er
+                      expliciet bij op welke basis, zodat de hele kaart in
+                      dezelfde eenheid spreekt. */}
                   {aanbod.vandaagVerschuldigdCenten === 0
                     ? 'Vandaag €0'
-                    : `Vandaag ${bedrag(aanbod.vandaagVerschuldigdCenten, aanbod.bedragen.valuta)}`}
+                    : `Vandaag ${bedrag(aanbod.vandaagVerschuldigdNettoCenten, aanbod.bedragen.valuta)} excl. btw`}
                 </span>
               </div>
             </>
@@ -987,15 +1006,40 @@ export default function SchoolRegistrationForm() {
         </div>
       )}
 
+      {/* Kan het aanbod niet worden opgehaald, dan kan de inschrijving ook
+          niet slagen: de route weigert dan met dezelfde reden. Hier stoppen is
+          eerlijker dan iemand adres, KVK-nummer en drie akkoorden laten
+          invullen om hem daarna alsnog af te wijzen.
+
+          Alleen op de nieuwe route. De oude raakt Stripe niet aan — daar zou
+          deze melding liegen én de knop onnodig blokkeren. */}
+      {aanbodVereistVoorInschrijven && aanbodFout && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          Inschrijven lukt nu niet — we kunnen het actuele aanbod niet ophalen.
+          Probeer het later opnieuw of mail <a href="mailto:team@ribba.app">team@ribba.app</a>.
+        </div>
+      )}
+
+      {serverError && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          {serverError}
+        </div>
+      )}
+
       <div className="form-submit">
-        <button type="submit" className="btn-primary" disabled={submitting} style={{ marginTop: 0 }}>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={submitting || (aanbodVereistVoorInschrijven && (aanbodFout || !aanbod))}
+          style={{ marginTop: 0 }}
+        >
           {submitting ? (
             <>
               <span className="spinner" />
-              Bezig met aanmaken...
+              Bezig…
             </>
           ) : (
-            'Account aanmaken'
+            verzendknopLabel
           )}
         </button>
       </div>

@@ -66,3 +66,34 @@ test('op de nieuwe route kan het wachtwoordveld nooit terugkomen', () => {
     assert.equal(wachtwoordBijInschrijven, false);
   }
 });
+
+// ── De belofte van de knop volgt de route ───────────────────────────────────
+
+test('de verzendknop belooft wat er echt gebeurt', async () => {
+  const { ACTIEVE_SIGNUP_ROUTE, OUDE_SIGNUP_ROUTE, verzendknopLabel, registratieIntro } =
+    await import('../lib/signup-funnel.ts');
+
+  if (ACTIEVE_SIGNUP_ROUTE === OUDE_SIGNUP_ROUTE) {
+    // Oude route: het account ontstaat meteen, dus dat mag de knop zeggen.
+    assert.equal(verzendknopLabel, 'Account aanmaken');
+    assert.match(registratieIntro, /begin direct/);
+  } else {
+    // Nieuwe route: er ontstaat hier géén account. Zou de knop dat toch
+    // beloven, dan klopt hij pas twee stappen later.
+    assert.notEqual(verzendknopLabel, 'Account aanmaken');
+    assert.doesNotMatch(registratieIntro, /begin direct/);
+  }
+});
+
+test('een Stripe-storing blokkeert de OUDE route nooit', async () => {
+  const { ACTIEVE_SIGNUP_ROUTE, OUDE_SIGNUP_ROUTE, aanbodVereistVoorInschrijven } =
+    await import('../lib/signup-funnel.ts');
+
+  // De oude route maakt zelf een school aan en raakt Stripe niet aan. Zou een
+  // mislukt aanbod daar de knop uitschakelen, dan blokkeren we inschrijvingen
+  // die het gewoon zouden hebben gered.
+  assert.equal(
+    aanbodVereistVoorInschrijven,
+    ACTIEVE_SIGNUP_ROUTE !== OUDE_SIGNUP_ROUTE,
+  );
+});
