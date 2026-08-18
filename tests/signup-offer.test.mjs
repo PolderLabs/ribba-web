@@ -276,3 +276,29 @@ test('een duur korter dan 48 uur wordt geweigerd — Stripe zou hem afwijzen', a
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'trial_te_kort');
 });
+
+test('het vandaag-bedrag komt in twee eenheden, zodat het scherm er één kan kiezen', async () => {
+  // Het formulier spreekt B2B: alles exclusief btw. Zonder een nettovariant zou
+  // "€ 45,00 per maand excl. btw" naast een vandaag-bedrag staan dat
+  // stilzwijgend inclusief is — twee eenheden in één kaart.
+  const promo = async () => ({
+    geldig: true, code: 'WELKOM20', promotionCodeId: 'promo_20',
+    coupon: { percentOff: 20, amountOffCenten: null, duur: 'repeating', duurMaanden: 3, valuta: null },
+  });
+  const r = await resolveSignupOffer(
+    deps({ premium_standaard: geldigePremium }, promo), 'premium', opt({ promoCode: 'WELKOM20' }),
+  );
+  assert.equal(r.vandaagVerschuldigdNettoCenten, 3600);  // €45 − 20%
+  assert.equal(r.vandaagVerschuldigdCenten, 4356);       // + 21% btw
+
+  // Zonder korting of trial: het volle bedrag, in beide eenheden.
+  const zonder = { ...geldigePremium, metadata: { plan: 'premium' } };
+  const v = await resolveSignupOffer(deps({ premium_standaard: zonder }), 'premium', opt());
+  assert.equal(v.vandaagVerschuldigdNettoCenten, 4500);
+  assert.equal(v.vandaagVerschuldigdCenten, 5445);
+
+  // Gratis is gratis, in beide eenheden.
+  const t = await resolveSignupOffer(deps({ premium_standaard: geldigePremium }), 'premium', opt());
+  assert.equal(t.vandaagVerschuldigdNettoCenten, 0);
+  assert.equal(t.vandaagVerschuldigdCenten, 0);
+});

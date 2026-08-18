@@ -145,11 +145,21 @@ export type Offer = {
   priceId: string;
   bedragen: Bedragen;
   /**
-   * Wat er vandaag daadwerkelijk wordt afgeschreven. 0 bij een trial én bij
-   * een coupon van 100%. Bij een gedeeltelijke korting het restbedrag —
-   * anders zou het scherm €0 tonen terwijl er wel degelijk geïncasseerd wordt.
+   * Wat er vandaag daadwerkelijk wordt afgeschreven, inclusief btw. 0 bij een
+   * trial én bij een coupon van 100%. Bij een gedeeltelijke korting het
+   * restbedrag — anders zou het scherm €0 tonen terwijl er wel degelijk
+   * geïncasseerd wordt.
    */
   vandaagVerschuldigdCenten: number;
+  /**
+   * Hetzelfde bedrag op nettobasis.
+   *
+   * Het inschrijfformulier spreekt consequent exclusief btw: Ribba verkoopt aan
+   * btw-plichtige rijschoolhouders, en voor hen is dat de prijs. Zonder dit
+   * veld zou de pagina "€ 45,00 per maand excl. btw" zetten naast een
+   * vandaag-bedrag dat stilzwijgend inclusief is — twee eenheden in één kaart.
+   */
+  vandaagVerschuldigdNettoCenten: number;
   /** null wanneer een campagne de trial vervangt, of bij direct betalen. */
   trial: TrialWeergave | null;
   /** null bij het standaardaanbod. Sluit `trial` uit. */
@@ -250,7 +260,10 @@ function berekenBedragen(price: Stripe.Price): Bedragen | OfferFailure {
  * functie doet hetzelfde, zodat het scherm niet iets anders zegt dan de eerste
  * factuur. Stripe blijft de bron: dit is weergave.
  */
-export function restbedragCenten(bedragen: Bedragen, coupon: CouponFeiten): number {
+export function restbedragCenten(
+  bedragen: Bedragen,
+  coupon: CouponFeiten,
+): { netto: number; bruto: number } {
   const netto = bedragen.nettoCenten;
 
   let nettoNaKorting: number;
@@ -266,8 +279,11 @@ export function restbedragCenten(bedragen: Bedragen, coupon: CouponFeiten): numb
     nettoNaKorting = netto;
   }
 
-  if (nettoNaKorting <= 0) return 0;
-  return nettoNaKorting + Math.round((nettoNaKorting * bedragen.btwTariefPercent) / 100);
+  if (nettoNaKorting <= 0) return { netto: 0, bruto: 0 };
+  return {
+    netto: nettoNaKorting,
+    bruto: nettoNaKorting + Math.round((nettoNaKorting * bedragen.btwTariefPercent) / 100),
+  };
 }
 
 function maandenTekst(aantal: number): string {
@@ -426,18 +442,19 @@ export async function resolveSignupOffer(
     };
   }
 
-  const vandaagVerschuldigdCenten = trial
-    ? 0
+  const rest = trial
+    ? { netto: 0, bruto: 0 }
     : korting
       ? restbedragCenten(bedragen, korting.coupon)
-      : bedragen.brutoCenten;
+      : { netto: bedragen.nettoCenten, bruto: bedragen.brutoCenten };
 
   return {
     ok: true,
     plan: genormaliseerd,
     priceId,
     bedragen,
-    vandaagVerschuldigdCenten,
+    vandaagVerschuldigdCenten: rest.bruto,
+    vandaagVerschuldigdNettoCenten: rest.netto,
     trial,
     korting,
     promoGeweigerd,
