@@ -454,22 +454,22 @@ test('rommel in attribution levert null op, geen fout', async () => {
 
 // ── Betaalmethoden zijn van Stripe ──────────────────────────────────────────
 
-test('de Checkout biedt tijdelijk alleen SEPA-incasso aan', async () => {
-  // Dit is een PLEISTER, geen ontwerpkeuze. Normaal laten we Stripe zelf
-  // bepalen welke methoden geldig zijn.
+test('de Checkout krijgt GEEN payment_method_types opgedrongen', async () => {
+  // Welke betaalmethoden een rijschool ziet, hoort uit de Stripe Payment Method
+  // Configuration te komen (`pmc_1TuHpNV05lmkpPlFBy4D585y`, sinds 19 aug bewust
+  // SEPA-only) en niet uit deze code. Stuur je dit veld mee, dan wordt die
+  // configuratie NIET geraadpleegd en telt alleen de account-capability.
   //
-  // Maar op 18 aug 2026 faalt iDEAL bij een verschuldigd bedrag van EUR 0,00
-  // met een HTTP 500, en dat gebeurt ook wanneer Stripe de methode ZELF kiest.
-  // Zonder dit veld biedt Stripe uitsluitend iDEAL aan en kan er dus niemand
-  // inschrijven. SEPA-incasso is wel bewezen, inclusief geldig mandaat.
-  //
-  // Deze test bewaakt niet dat dit zo hoort, maar dat het bewust zo staat.
-  // Werkt iDEAL weer, dan hoort dit veld weg en deze test mee.
+  // Het veld heeft hier twee keer gestaan, beide keren als pleister. Deze test
+  // bestaat zodat niemand het "voor de zekerheid" een derde keer terugzet: dat
+  // is geen kleine voorzorg maar een verschuiving van de eigenaarschapsgrens
+  // die ribbaPro:docs/design/2026-08-19_stripe-payment-ownership-ontwerp.md
+  // vastlegt.
   reset();
   await POST(verzoek());
-  assert.deepEqual(sessies[0].payment_method_types, ['sepa_debit']);
+  assert.equal('payment_method_types' in sessies[0], false);
 
   reset();
   await POST(verzoek({ promo_code: 'STARTGRATIS' }));
-  assert.deepEqual(sessies[0].payment_method_types, ['sepa_debit'], 'ook met actiecode');
+  assert.equal('payment_method_types' in sessies[0], false, 'ook met actiecode');
 });
