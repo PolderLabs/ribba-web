@@ -32,8 +32,20 @@
 export const OUDE_SIGNUP_ROUTE = '/api/register-school';
 export const NIEUWE_SIGNUP_ROUTE = '/api/signup/start';
 
-/** De route waar het registratieformulier vandaag naartoe post. */
-export const ACTIEVE_SIGNUP_ROUTE: string = OUDE_SIGNUP_ROUTE;
+/**
+ * De route waar het registratieformulier vandaag naartoe post.
+ *
+ * OMGEZET OP 18 AUGUSTUS 2026 (besluit Önder). Vanaf nu loopt elke nieuwe
+ * inschrijving via de mandaatketen: formulier → pending registratie → Stripe
+ * Checkout → webhook → school. De oude route blijft bestaan en bereikbaar,
+ * maar er wijst niets meer naartoe; opruimen gebeurt apart.
+ *
+ * Alles wat hieronder van deze constante is afgeleid gaat in één klap mee: de
+ * wachtwoordvelden verdwijnen, de actiecode verschijnt, de knop belooft
+ * betaalgegevens in plaats van een account, en het aanbod wordt een voorwaarde
+ * om te kunnen inschrijven.
+ */
+export const ACTIEVE_SIGNUP_ROUTE: string = NIEUWE_SIGNUP_ROUTE;
 
 /**
  * Vraagt de actieve route om een wachtwoord bij inschrijven?
