@@ -212,7 +212,8 @@ export function herstelHoortBij(
  * Volgorde is bewust:
  *   1. PKCE (`?code=`) — de huidige vorm, en hij staat er alleen nog als de
  *      client hem niet zelf heeft ingewisseld;
- *   2. implicit (`#access_token=`) — oudere links, blijft ondersteund;
+ *   2. implicit (`#access_token=`) — oudere links, blijft ondersteund, maar
+ *      alleen mét `type=recovery`;
  *   3. een expliciete fout van Supabase — `?error=` bij PKCE, `#error=` bij de
  *      oudere vorm;
  *   4. binnengekomen mét link, en de sessie die er nu is komt aantoonbaar uit
@@ -234,6 +235,21 @@ export function classifyResetUrl(input: ResetUrlInput): ResetAction {
     const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
     const accessToken = params.get('access_token');
     const refreshToken = params.get('refresh_token');
+
+    // De oude implicit-vorm draagt kant-en-klare tokens in de hash. Zonder
+    // verdere eis zou élk tokenpaar hier het wachtwoordscherm openen — ook dat
+    // van een gewone inlog, een magic link of een net bevestigde inschrijving.
+    // Dat verdraagt zich niet met de regel die de rest van deze module
+    // handhaaft: alleen bewezen herstel mag door.
+    //
+    // Het bewijs zit hier niet in de `amr`-claim maar in `type=recovery` uit
+    // de redirect. GoTrue geeft implicit-sessies namelijk uit met `otp` als
+    // methode, óók bij herstel — een centrale amr-controle zou deze legacy
+    // links dus juist blokkeren. Supabase' eigen client leest de herkomst op
+    // dezelfde plek: `_getSessionFromURL` geeft `redirectType: params.type`
+    // terug en stuurt daarop het PASSWORD_RECOVERY-event.
+    if (params.get('type') !== 'recovery') return { kind: 'error' };
+
     if (accessToken && refreshToken) {
       return { kind: 'set-session', accessToken, refreshToken };
     }

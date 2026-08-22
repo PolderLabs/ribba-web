@@ -132,6 +132,32 @@ test('access_token zonder refresh_token is onbruikbaar', () => {
   );
 });
 
+// De implicit-vorm draagt kant-en-klare tokens in de hash. Zonder eis aan het
+// type zou élk tokenpaar het wachtwoordscherm openen — ook dat van een gewone
+// inlog of een magic link. Het bewijs zit hier in `type=recovery`, niet in de
+// amr: GoTrue geeft implicit-sessies uit met `otp` als methode, ook bij
+// herstel, dus een amr-controle zou juist deze legacy links blokkeren.
+test('implicit zonder type= wordt geweigerd, hoe compleet de tokens ook zijn', () => {
+  assert.deepEqual(
+    classifyResetUrl({ ...basis, hash: '#access_token=AAA&refresh_token=BBB', metLink: true }),
+    { kind: 'error' },
+  );
+});
+
+test('implicit met een ánder type dan recovery komt er niet door', () => {
+  for (const type of ['magiclink', 'signup', 'invite', 'email_change']) {
+    assert.deepEqual(
+      classifyResetUrl({
+        ...basis,
+        hash: `#access_token=AAA&refresh_token=BBB&type=${type}`,
+        metLink: true,
+      }),
+      { kind: 'error' },
+      `type=${type} hoort geen wachtwoordscherm te openen`,
+    );
+  }
+});
+
 test('?error= van Supabase wordt óók een foutmelding — PKCE levert hem in de query', () => {
   // Op 20 aug 2026 in het serverlog gezien; tot dan viel deze vorm door naar
   // het kale e-mailformulier, zonder uitleg waarom de link niet werkte.
@@ -176,7 +202,11 @@ test('PKCE gaat vóór een hash — een link draagt nooit beide, maar de volgord
 
 test('hash zonder leidende # wordt ook gelezen', () => {
   assert.deepEqual(
-    classifyResetUrl({ ...basis, hash: 'access_token=AAA&refresh_token=BBB', metLink: true }),
+    classifyResetUrl({
+      ...basis,
+      hash: 'access_token=AAA&refresh_token=BBB&type=recovery',
+      metLink: true,
+    }),
     { kind: 'set-session', accessToken: 'AAA', refreshToken: 'BBB' },
   );
 });
