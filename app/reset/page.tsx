@@ -134,9 +134,28 @@ export default function ResetPage() {
       const { data: nu } = await supabase.auth.getSession();
       zetVlag(leesSessieId(nu.session?.access_token));
 
-      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
-        const { data: factors } = await supabase.auth.mfa.listFactors();
+      // Een mislukte aanroep is iets anders dan "geen tweefactor nodig". Wie
+      // die fout inslikt, stuurt de gebruiker door naar het wachtwoordveld,
+      // waar GoTrue hem alsnog met een 401 tegenhoudt — en dan wijst onze
+      // melding naar een codescherm dat hij niet meer kan bereiken.
+      const { data: aal, error: aalFout } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aalFout || !aal) {
+        console.error('mfa.getAuthenticatorAssuranceLevel', aalFout);
+        naarFout('Er ging iets mis. Probeer het opnieuw.');
+        return;
+      }
+
+      if (aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        // Ook hier: een storing is geen "je hebt geen authenticator". Die
+        // melding stuurt iemand naar support voor een probleem dat na één
+        // poging weg kan zijn.
+        const { data: factors, error: factorenFout } = await supabase.auth.mfa.listFactors();
+        if (factorenFout) {
+          console.error('mfa.listFactors', factorenFout);
+          naarFout('Er ging iets mis. Probeer het opnieuw.');
+          return;
+        }
         // Expliciet op `verified` filteren. listFactors zeeft in deze versie
         // zelf al op status (auth-js, GoTrueClient.js:2688), maar dat is een
         // interne keuze van de library: een halfafgemaakte enrolment mag hier
@@ -157,6 +176,15 @@ export default function ResetPage() {
     (async () => {
       const { data: bestaand } = await supabase.auth.getSession();
       const actie = classifyResetUrl({
+        // Bewust de LIVE url, niet de `search` die hierboven is vastgelegd.
+        // Die momentopname dient alleen `metLink`: stond er een link in de
+        // URL waarmee deze pagina werd geopend? Hier telt de stand ná de
+        // initialisatie van de Supabase-client. Is de `?code=` intussen
+        // verdwenen, dan heeft de client hem zelf met succes ingewisseld —
+        // hij wist de balk alleen na een geslaagde exchange. De oude
+        // momentopname doorgeven zou ons een reeds verzilverde code opnieuw
+        // laten inwisselen, en dat faalt: de gebruiker krijgt dan "link al
+        // gebruikt of verlopen" op een link die gewoon werkte.
         search: window.location.search,
         hash,
         metLink,
