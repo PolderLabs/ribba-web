@@ -22,8 +22,8 @@ const FEATURES = [
     desc: 'iDEAL-betalingen, Moneybird-koppeling en heldere facturen.',
   },
   {
-    title: 'CBR-koppeling',
-    desc: 'Examens direct vanuit de app inplannen en beheren.',
+    title: 'Officiële CBR TOP-koppeling',
+    desc: 'Examens en praktijkexamenresultaten worden automatisch uit CBR TOP uitgelezen en aan de juiste leerling gekoppeld.',
   },
 ];
 

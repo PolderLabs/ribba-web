@@ -11,7 +11,7 @@ const PREMIUM_GROSS = formatCentsForDisplay(getPlanPricing('premium').grossMonth
 export const metadata: Metadata = {
   title: 'Ribba – Rijschool Planner',
   description:
-    'Nooit meer planningsstress. Beheer leerlingen, lessen, facturatie en CBR — alles in één app voor iOS en Android.',
+    'Beheer leerlingen, lessen en facturatie, met automatische synchronisatie van CBR-examens en praktijkexamenresultaten.',
 };
 
 const BASIC_FEATURES = [
