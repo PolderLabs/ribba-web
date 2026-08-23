@@ -22,8 +22,8 @@ const FEATURES = [
     desc: 'iDEAL-betalingen, Moneybird-koppeling en heldere facturen.',
   },
   {
-    title: 'CBR-koppeling',
-    desc: 'Examens en uitslagen worden uitgelezen en automatisch aan de juiste leerling gekoppeld.',
+    title: 'Officiële CBR TOP-koppeling',
+    desc: 'Examens en praktijkexamenresultaten worden automatisch uit CBR TOP uitgelezen en aan de juiste leerling gekoppeld.',
   },
 ];
 
