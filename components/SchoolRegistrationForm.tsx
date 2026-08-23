@@ -1,6 +1,61 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useCallback, FormEvent } from 'react';
+// De actiecode is zichtbaar zodra — en alleen zodra — de route hem kan
+// honoreren. Afgeleid, niet los instelbaar. Zie lib/signup-funnel.ts.
+import {
+  ACTIEVE_SIGNUP_ROUTE,
+  aanbodVereistVoorInschrijven,
+  promoBeschikbaar,
+  verzendknopLabel,
+  wachtwoordBijInschrijven,
+} from '@/lib/signup-funnel';
+
+// Het aanbod komt SERVER-SIDE uit Stripe, niet uit een lijst in deze
+// component. Een wijziging van €25 → €30 of van 1 → 3 maanden gratis moet
+// zichtbaar worden zonder codewijziging. Zou de prijs hier staan, dan hadden
+// we dezelfde dubbele waarheid als een price-id-mapping — alleen in
+// marketingtekst, waar hij nog moeilijker te vinden is.
+//
+// DEZE COMPONENT REKENT NIETS. Bedragen, btw, "vandaag €0", de zin
+// "6 maanden gratis" en de datum van de eerste incasso komen alle vijf van de
+// server. Hier stond eerder een `gratisPeriode(dagen)` die uit `30` de tekst
+// "1 maand gratis" maakte — dat was een tweede plek waar het aanbod ontstond,
+// en hij zou stilzwijgend gaan liegen zodra de duur een echte kalendermaand
+// werd in plaats van 30 dagen.
+//
+// ÉÉN AANBOD, GEEN KEUZE. Sinds 16 aug start iedereen op Premium; wisselen
+// naar Basic kan daarna in de app. Er staan hier dus geen vergelijkingskaarten
+// meer — die keuze vlak vóór een machtiging leverde alleen twijfel op, en de
+// prijs die telt is toch pas na de gratis periode aan de orde.
+type Aanbod = {
+  bedragen: {
+    nettoCenten: number;
+    btwCenten: number;
+    brutoCenten: number;
+    btwTariefPercent: number;
+    valuta: string;
+    interval: string;
+  };
+  /** 0 tijdens een gratis periode. Hoort visueel het prominentst. */
+  vandaagVerschuldigdCenten: number;
+  /** Hetzelfde bedrag netto — de kaart spreekt consequent exclusief btw. */
+  vandaagVerschuldigdNettoCenten: number;
+  /** Het standaardaanbod. null zodra een actie het overneemt. */
+  trial: { tekst: string; eersteIncassoISO: string } | null;
+  /** Een actie. Sluit `trial` uit. `tekst` komt van de server. */
+  korting: { code: string; tekst: string } | null;
+};
+
+function bedrag(centen: number, valuta: string): string {
+  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: valuta })
+    .format(centen / 100);
+}
+
+function datum(iso: string): string {
+  return new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+    .format(new Date(iso));
+}
 import { isValidEmail } from '@/utils/validation';
 import { StoreBadges } from '@/app/components/StoreBadges';
 import { LEGAL_VERSIONS } from '@/lib/legal-versions';
@@ -91,7 +146,54 @@ export default function SchoolRegistrationForm() {
     privacy_accepted: false,
     dpa_accepted: false,
   });
+  const [aanbod, setAanbod] = useState<Aanbod | null>(null);
+  const [aanbodFout, setAanbodFout] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+
+  // ── Actiecode ────────────────────────────────────────────────────────────
+  // Wat de code doet met het aanbod bepaalt de SERVER, met dezelfde resolver
+  // die Checkout straks voedt. Deze component stuurt alleen de tekst op en
+  // toont wat er terugkomt. Hier wordt niets afgeleid uit "STARTGRATIS" en
+  // niets uitgerekend — anders ontstaat er weer een tweede plek waar een
+  // aanbod ontstaat, en die gaat een keer afwijken van wat er geïncasseerd
+  // wordt.
+  const [codeInvoer, setCodeInvoer] = useState('');
+  /** De code die de server heeft geaccepteerd. Alleen deze telt. */
+  const [codeToegepast, setCodeToegepast] = useState<string | null>(null);
+  const [codeGeweigerd, setCodeGeweigerd] = useState(false);
+  const [codeBezig, setCodeBezig] = useState(false);
+
+  const haalAanbod = useCallback(async (codeInput: string | null) => {
+    // Zolang de oude submitroute draait, wordt er geen code meegestuurd — ook
+    // niet als er er op een of andere manier toch een in de state komt. Het
+    // getoonde aanbod is dan gegarandeerd het aanbod dat wordt uitgevoerd.
+    const code = promoBeschikbaar ? codeInput : null;
+    setCodeBezig(true);
+    try {
+      const url = code ? `/api/signup/offer?code=${encodeURIComponent(code)}` : '/api/signup/offer';
+      const d = await (await fetch(url)).json();
+      if (d?.beschikbaar && d.bedragen) {
+        setAanbod({
+          bedragen: d.bedragen,
+          vandaagVerschuldigdCenten: d.vandaagVerschuldigdCenten,
+          vandaagVerschuldigdNettoCenten: d.vandaagVerschuldigdNettoCenten,
+          trial: d.trial ?? null,
+          korting: d.korting ?? null,
+        });
+        setAanbodFout(false);
+        setCodeToegepast(d.promoToegepast ?? null);
+        setCodeGeweigerd(Boolean(d.promoGeweigerd));
+      } else {
+        setAanbodFout(true);
+      }
+    } catch {
+      setAanbodFout(true);
+    } finally {
+      setCodeBezig(false);
+    }
+  }, []);
+
+  useEffect(() => { void haalAanbod(null); }, [haalAanbod]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -159,16 +261,20 @@ export default function SchoolRegistrationForm() {
       e.btw_number = `Ongeldig BTW-nummer (bijv. ${profile.vat.placeholder})`;
     }
 
-    if (!form.password) {
-      e.password = 'Wachtwoord is verplicht';
-    } else if (form.password.length < 8) {
-      e.password = 'Wachtwoord moet minimaal 8 tekens zijn';
-    }
+    // Alleen de oude route maakt het account meteen aan en heeft dus een
+    // wachtwoord nodig. Zie lib/signup-funnel.ts.
+    if (wachtwoordBijInschrijven) {
+      if (!form.password) {
+        e.password = 'Wachtwoord is verplicht';
+      } else if (form.password.length < 8) {
+        e.password = 'Wachtwoord moet minimaal 8 tekens zijn';
+      }
 
-    if (!form.password_confirm) {
-      e.password_confirm = 'Bevestig je wachtwoord';
-    } else if (form.password !== form.password_confirm) {
-      e.password_confirm = 'Wachtwoorden komen niet overeen';
+      if (!form.password_confirm) {
+        e.password_confirm = 'Bevestig je wachtwoord';
+      } else if (form.password !== form.password_confirm) {
+        e.password_confirm = 'Wachtwoorden komen niet overeen';
+      }
     }
 
     if (!form.terms_accepted) {
@@ -196,7 +302,7 @@ export default function SchoolRegistrationForm() {
 
     try {
       const useBilling = isBv && form.billing_differs;
-      const res = await fetch('/api/register-school', {
+      const res = await fetch(ACTIEVE_SIGNUP_ROUTE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -214,10 +320,17 @@ export default function SchoolRegistrationForm() {
           billing_address: useBilling ? form.billing_address : null,
           billing_postal_code: useBilling ? normalizePostcode(form.billing_postal_code) : null,
           billing_city: useBilling ? form.billing_city : null,
+          // Alleen wanneer de route hem ook kan honoreren, en alleen de code
+          // die de SERVER heeft geaccepteerd. Een geweigerde code gaat niet
+          // mee; de server valideert straks toch opnieuw.
+          ...(promoBeschikbaar && codeToegepast ? { promo_code: codeToegepast } : {}),
           kvk_number: normalizeBusinessRegister(form.kvk_number),
           btw_number: form.btw_number.trim() ? normalizeVat(form.btw_number) : '',
-          password: form.password,
-          password_confirm: form.password_confirm,
+          // De nieuwe route kent geen wachtwoord; meesturen zou het stil
+          // laten vallen en de indruk wekken dat het iets doet.
+          ...(wachtwoordBijInschrijven
+            ? { password: form.password, password_confirm: form.password_confirm }
+            : {}),
           legal_acceptances: {
             terms: LEGAL_VERSIONS.terms,
             privacy: LEGAL_VERSIONS.privacy,
@@ -234,8 +347,26 @@ export default function SchoolRegistrationForm() {
       }
 
       const data = await res.json().catch(() => null);
-      // Google Ads trial-registratie-conversie: pas hier, ná een geslaagde
-      // account-aanmaak. school_id als transaction_id voor dedupe.
+
+      // ── De nieuwe route eindigt bij Stripe, niet hier ────────────────────
+      //
+      // Zij maakt geen account maar een Checkout-sessie, en geeft een
+      // `checkoutUrl` terug. Wie hier een successcherm zou tonen, laat iemand
+      // achter met "gelukt!" terwijl er nooit een machtiging is afgegeven en
+      // er dus nooit een rijschool ontstaat.
+      //
+      // Bewust géén `setSubmitting(false)` vóór de sprong: de knop blijft in
+      // de bezig-staat tot de browser weg navigeert. Anders lijkt het formulier
+      // klaar terwijl er een redirect onderweg is, en klikt iemand nog een keer.
+      if (typeof data?.checkoutUrl === 'string' && data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
+
+      // De oude route maakt het account wél meteen aan en meldt succes.
+      // Google Ads-conversie hoort daar: op de nieuwe route zou hij afhakers
+      // meetellen, want daar is het formulier verzenden nog geen inschrijving.
+      // Die conversie verhuist naar /registreren/ontvangen.
       trackTrialSignup(data?.school_id ?? undefined);
       setSuccess(true);
     } catch (err) {
@@ -299,6 +430,172 @@ export default function SchoolRegistrationForm() {
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="form-grid">
+        {/* Je abonnement — geen keuze meer, één aanbod. */}
+        <fieldset className="form-group full-width" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={{ padding: 0, marginBottom: 6, fontWeight: 600 }}>Je abonnement</legend>
+
+          {aanbodFout && (
+            <p style={{ margin: 0, fontSize: 14, color: '#B45309', lineHeight: 1.5 }}>
+              We kunnen het actuele aanbod nu niet ophalen. Probeer het later opnieuw of mail{' '}
+              <a href="mailto:team@ribba.app">team@ribba.app</a>.
+            </p>
+          )}
+          {!aanbod && !aanbodFout && (
+            <p style={{ margin: 0, fontSize: 14, color: '#78716C' }}>Aanbod ophalen…</p>
+          )}
+
+          {aanbod && (
+            <>
+              <p style={{ margin: '0 0 12px', fontSize: 14, color: '#57534E', lineHeight: 1.5 }}>
+                Je start met Ribba Premium. Wisselen naar Basic kan later altijd
+                in de app — ook tijdens de gratis periode.
+              </p>
+
+              {/* Actiecode. Bewust bóven de kaarten: je ziet meteen wat hij
+                  doet. Verschijnt pas wanneer het formulier naar de nieuwe
+                  funnel post — zie lib/signup-funnel.ts. */}
+              {promoBeschikbaar && (
+              <div style={{ marginBottom: 14 }}>
+                {codeToegepast ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                    background: '#F0FDF4', border: '1px solid #BBF7D0',
+                    borderRadius: 8, padding: '10px 12px',
+                  }}>
+                    <span style={{ fontSize: 14, color: '#15803D', fontWeight: 600 }}>
+                      Code {codeToegepast} toegepast
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setCodeInvoer(''); void haalAanbod(null); }}
+                      style={{
+                        marginLeft: 'auto', background: 'none', border: 0, padding: 0,
+                        fontSize: 13, color: '#57534E', textDecoration: 'underline', cursor: 'pointer',
+                      }}
+                    >
+                      Verwijderen
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <label htmlFor="promo_code" style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>
+                      Actiecode <span style={{ color: '#78716C' }}>(optioneel)</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        id="promo_code"
+                        type="text"
+                        value={codeInvoer}
+                        autoComplete="off"
+                        // BEWUST GEEN VOORBEELDCODE. Hier stond
+                        // "Bijvoorbeeld STARTGRATIS", en daarmee gaf de
+                        // inschrijfpagina de lopende campagne weg aan iedere
+                        // bezoeker. Een actiecode is gericht: hij hoort bij de
+                        // rijscholen die je ermee wilt binnenhalen, niet bij
+                        // wie toevallig het formulier opent.
+                        placeholder=""
+                        onChange={(e) => { setCodeInvoer(e.target.value); setCodeGeweigerd(false); }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          // Anders verstuurt Enter het hele formulier.
+                          e.preventDefault();
+                          if (codeInvoer.trim()) void haalAanbod(codeInvoer.trim());
+                        }}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <button
+                        type="button"
+                        disabled={codeBezig || !codeInvoer.trim()}
+                        onClick={() => void haalAanbod(codeInvoer.trim())}
+                        style={{
+                          padding: '0 16px', borderRadius: 8, border: '1px solid #D6D3D1',
+                          background: '#FFFFFF', fontSize: 14, fontWeight: 600,
+                          cursor: codeBezig || !codeInvoer.trim() ? 'default' : 'pointer',
+                          opacity: codeBezig || !codeInvoer.trim() ? 0.5 : 1, whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {codeBezig ? 'Bezig…' : 'Toepassen'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {codeGeweigerd && (
+                  // Nooit stil terugvallen: wie een code intypt moet horen dát
+                  // hij niet geldt, én wat er dan wél geldt. Doorgaan mag —
+                  // een verkeerd getypte code hoort niemand tegen te houden.
+                  <p style={{ margin: '8px 0 0', fontSize: 14, color: '#B91C1C', lineHeight: 1.5 }}>
+                    Deze code is niet geldig, verlopen of al gebruikt.{' '}
+                    <span style={{ color: '#57534E' }}>
+                      {aanbod.trial
+                        ? `Het standaardaanbod geldt: ${aanbod.trial.tekst}.`
+                        : 'Het standaardaanbod geldt.'}
+                      {' '}Je kunt gewoon doorgaan.
+                    </span>
+                  </p>
+                )}
+              </div>
+              )}
+              {/* Eén samenvatting, geen keuzekaarten. Wat er staat komt van
+                  de server: de zin over de gratis periode, de bedragen en het
+                  bedrag van vandaag. Deze component rekent niets. */}
+              <div style={{
+                border: '1px solid #E7E5E4', background: '#FFFFFF',
+                borderRadius: 10, padding: '12px 14px',
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+              }}>
+                <span style={{ flex: 1 }}>
+                  <strong style={{ display: 'block' }}>Ribba Premium</strong>
+
+                  {/* Mét einddatum, bewust. Stripe's eigen betaalpagina rekent
+                      de kop altijd om naar dagen — "183 dagen gratis" waar wij
+                      "6 maanden" zeggen. De datum is het herkenningspunt dat op
+                      beide schermen gelijk is. */}
+                  {aanbod.trial && (
+                    <span style={{ display: 'block', fontSize: 14, color: '#15803D', fontWeight: 600 }}>
+                      {aanbod.trial.tekst}, tot {datum(aanbod.trial.eersteIncassoISO)}
+                    </span>
+                  )}
+                  {/* Bij een actie komt de zin van de server: die weet of het
+                      100% is of een gedeeltelijke korting, en hoe lang. */}
+                  {aanbod.korting && (
+                    <span style={{ display: 'block', fontSize: 14, color: '#15803D', fontWeight: 600 }}>
+                      {aanbod.korting.tekst}
+                    </span>
+                  )}
+
+                  {/* ── ALLES EXCLUSIEF BTW (besluit Önder, 17 aug) ────────
+                      Ribba verkoopt aan rijschoolhouders, en die zijn
+                      btw-plichtig: voor hen is het nettobedrag de prijs. Twee
+                      bedragen naast elkaar tonen maakt het duurder dan het
+                      voelt, zonder dat de tweede iets toevoegt.
+
+                      Bij het afrekenen laat Stripe het bedrag inclusief btw
+                      zien. Dat is geen verrassing maar de wettelijke plicht op
+                      het moment dat er daadwerkelijk wordt geïncasseerd, en
+                      daar hoort het ook thuis. */}
+                  <span style={{ display: 'block', fontSize: 14, color: '#57534E' }}>
+                    {aanbod.trial || aanbod.korting ? 'Daarna ' : ''}
+                    {bedrag(aanbod.bedragen.nettoCenten, aanbod.bedragen.valuta)} per maand excl. btw
+                  </span>
+                </span>
+                <span style={{
+                  fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap',
+                  color: aanbod.vandaagVerschuldigdCenten === 0 ? '#15803D' : '#57534E',
+                }}>
+                  {/* Nul is nul, met of zonder btw — daar hoort geen
+                      toevoeging bij. Is er wél iets verschuldigd, dan staat er
+                      expliciet bij op welke basis, zodat de hele kaart in
+                      dezelfde eenheid spreekt. */}
+                  {aanbod.vandaagVerschuldigdCenten === 0
+                    ? 'Vandaag €0'
+                    : `Vandaag ${bedrag(aanbod.vandaagVerschuldigdNettoCenten, aanbod.bedragen.valuta)} excl. btw`}
+                </span>
+              </div>
+            </>
+          )}
+        </fieldset>
+
         {/* Bedrijfsvorm */}
         <div className="form-group full-width">
           <label htmlFor="legal_form">Bedrijfsvorm</label>
@@ -566,33 +863,52 @@ export default function SchoolRegistrationForm() {
           {errors.last_name && <p className="form-error">{errors.last_name}</p>}
         </div>
 
-        {/* Wachtwoord */}
-        <div className="form-group">
-          <label htmlFor="password">Wachtwoord</label>
-          <input
-            id="password"
-            type="password"
-            placeholder="Minimaal 8 tekens"
-            className={errors.password ? 'error' : ''}
-            value={form.password}
-            onChange={(e) => handleChange('password', e.target.value)}
-          />
-          {errors.password && <p className="form-error">{errors.password}</p>}
-        </div>
+        {/* Wachtwoord — alleen bij de oude route, die het account meteen
+            aanmaakt. Bij de nieuwe route ontstaat het account pas ná de
+            betaling en kiest de rijschool zelf een wachtwoord via de mail. */}
+        {wachtwoordBijInschrijven ? (
+          <>
+          {/* Wachtwoord */}
+          <div className="form-group">
+            <label htmlFor="password">Wachtwoord</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="Minimaal 8 tekens"
+              className={errors.password ? 'error' : ''}
+              value={form.password}
+              onChange={(e) => handleChange('password', e.target.value)}
+            />
+            {errors.password && <p className="form-error">{errors.password}</p>}
+          </div>
 
-        {/* Bevestig wachtwoord */}
-        <div className="form-group">
-          <label htmlFor="password_confirm">Bevestig wachtwoord</label>
-          <input
-            id="password_confirm"
-            type="password"
-            placeholder="Herhaal wachtwoord"
-            className={errors.password_confirm ? 'error' : ''}
-            value={form.password_confirm}
-            onChange={(e) => handleChange('password_confirm', e.target.value)}
-          />
-          {errors.password_confirm && <p className="form-error">{errors.password_confirm}</p>}
-        </div>
+          {/* Bevestig wachtwoord */}
+          <div className="form-group">
+            <label htmlFor="password_confirm">Bevestig wachtwoord</label>
+            <input
+              id="password_confirm"
+              type="password"
+              placeholder="Herhaal wachtwoord"
+              className={errors.password_confirm ? 'error' : ''}
+              value={form.password_confirm}
+              onChange={(e) => handleChange('password_confirm', e.target.value)}
+            />
+            {errors.password_confirm && <p className="form-error">{errors.password_confirm}</p>}
+          </div>
+          </>
+        ) : (
+          <div className="form-group full-width">
+            <p style={{
+              margin: 0, fontSize: 14, color: '#57534E', lineHeight: 1.5,
+              background: '#F8FAFC', border: '1px solid #E7E5E4',
+              borderRadius: 10, padding: '12px 14px',
+            }}>
+              <strong>Je kiest straks zelf een wachtwoord.</strong> Zodra je
+              inschrijving rond is, sturen we je een e-mail met een link om er
+              een in te stellen.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Legal acceptances — 3 aparte checkboxes voor juridische traceerbaarheid */}
@@ -690,15 +1006,40 @@ export default function SchoolRegistrationForm() {
         </div>
       )}
 
+      {/* Kan het aanbod niet worden opgehaald, dan kan de inschrijving ook
+          niet slagen: de route weigert dan met dezelfde reden. Hier stoppen is
+          eerlijker dan iemand adres, KVK-nummer en drie akkoorden laten
+          invullen om hem daarna alsnog af te wijzen.
+
+          Alleen op de nieuwe route. De oude raakt Stripe niet aan — daar zou
+          deze melding liegen én de knop onnodig blokkeren. */}
+      {aanbodVereistVoorInschrijven && aanbodFout && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          Inschrijven lukt nu niet — we kunnen het actuele aanbod niet ophalen.
+          Probeer het later opnieuw of mail <a href="mailto:team@ribba.app">team@ribba.app</a>.
+        </div>
+      )}
+
+      {serverError && (
+        <div className="alert alert-error" style={{ marginTop: 20 }}>
+          {serverError}
+        </div>
+      )}
+
       <div className="form-submit">
-        <button type="submit" className="btn-primary" disabled={submitting} style={{ marginTop: 0 }}>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={submitting || (aanbodVereistVoorInschrijven && (aanbodFout || !aanbod))}
+          style={{ marginTop: 0 }}
+        >
           {submitting ? (
             <>
               <span className="spinner" />
-              Bezig met aanmaken...
+              Bezig…
             </>
           ) : (
-            'Account aanmaken'
+            verzendknopLabel
           )}
         </button>
       </div>
