@@ -458,7 +458,12 @@ function UpgradeContent() {
               PROEFPERIODE
             </span>
             <div>
-              Je gebruikt nu <strong>Premium</strong> — alle functies vrij, onbeperkt leerlingen en instructeurs.
+              {/* Onbeperkt slaat op leerlingen, niet op instructeurs. De
+                  proefperiode draait op Premium-capaciteit: vijf
+                  instructeursplaatsen, afgedwongen door
+                  assert_instructor_capacity. "Onbeperkt instructeurs" beloofde
+                  iets wat de app bij de zesde weigert. */}
+              Je gebruikt nu <strong>Premium</strong> — alle functies vrij, onbeperkt leerlingen en tot 5 instructeurs.
               {trialEndFormatted && (
                 <>
                   {' '}
