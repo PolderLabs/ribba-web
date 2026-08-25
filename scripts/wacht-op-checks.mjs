@@ -149,7 +149,20 @@ export function beoordeel(verwacht, checks) {
  * commit statuses (externe integraties zoals Vercel). Beide worden hier tot
  * dezelfde vorm teruggebracht.
  */
+/** De commit die wij lokaal hebben, of null buiten een checkout. */
+export function lokaleHeadVan(uitvoerder) {
+  try {
+    return uitvoerder().trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function haalChecks(pr) {
+  const lokaleHead = lokaleHeadVan(() =>
+    execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+  );
+
   const uitvoeren = (args) => {
     try {
       return JSON.parse(
@@ -163,6 +176,15 @@ function haalChecks(pr) {
   const prInfo = uitvoeren(['pr', 'view', String(pr), '--json', 'headRefOid']);
   const sha = prInfo?.headRefOid;
   if (!sha) return [];
+
+  // GitHub's PR-head loopt vlak na een push achter. Op 25 aug 2026 meldde dit
+  // script daardoor "ALLE CHECKS GROEN" terwijl de zojuist gepushte commit nog
+  // draaide: het las de uitslag van de vorige. Kennen we lokaal een andere
+  // commit, dan is GitHub nog niet bij en wachten we door.
+  //
+  // Best effort: draait dit script buiten een checkout, dan is er niets te
+  // vergelijken en vertrouwen we op de PR-head.
+  if (lokaleHead && lokaleHead !== sha) return [];
 
   const repo = execFileSync('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], {
     encoding: 'utf8',

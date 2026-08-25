@@ -168,3 +168,24 @@ test('commit statuses vertalen net zo', () => {
   assert.equal(bucketVanStatus('failure'), 'fail');
   assert.equal(bucketVanStatus('error'), 'fail');
 });
+
+// ── de derde variant van dezelfde fout ───────────────────────────────────────
+//
+// 24 aug: "geen pending" was waar omdat er nog nul checks waren.
+// 25 aug ochtend: gh pr checks gaf de uitslag van de vórige commit.
+// 25 aug middag: GitHub's PR-head liep zélf achter, dus zelfs de commit klopte
+// niet — het script meldde groen terwijl de zojuist gepushte commit nog draaide.
+//
+// Steeds dezelfde vorm: verouderde of ontbrekende toestand aangezien voor klaar.
+
+import { lokaleHeadVan } from '../scripts/wacht-op-checks.mjs';
+
+test('de lokale commit wordt gelezen als hij er is', () => {
+  assert.equal(lokaleHeadVan(() => 'abc123\n'), 'abc123');
+});
+
+test('buiten een checkout is er niets te vergelijken', () => {
+  // Dan vertrouwen we op de PR-head; beter dat dan helemaal niet kunnen wachten.
+  assert.equal(lokaleHeadVan(() => { throw new Error('geen git'); }), null);
+  assert.equal(lokaleHeadVan(() => '   \n'), null);
+});
