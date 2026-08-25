@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { sendAdminNotification } from '@/lib/admin-notifications';
 import { logBillingEvent } from '@/lib/billing-events';
 
 // Stripe-statussen die als ACTIEF abonnement tellen. Bewust op de ACTUELE
