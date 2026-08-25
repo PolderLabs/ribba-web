@@ -10,7 +10,6 @@
     "test": "node --experimental-strip-types --experimental-test-module-mocks --import ./tests/_register-alias.mjs --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
-    "@mollie/api-client": "^4.4.0",
     "@stripe/react-stripe-js": "^6.8.0",
     "@stripe/stripe-js": "^9.12.1",
     "@supabase/ssr": "^0.9.0",

@@ -56,7 +56,6 @@ mock.module('@/lib/admin-notifications', {
   namedExports: { sendAdminNotification: async (t, s) => { adminNotifyCalls.push({ t, s }); } },
 });
 
-const { POST: checkoutPOST } = await import('../app/api/checkout/route.ts');
 const { POST: cancelPOST } = await import('../app/api/cancel-subscription/route.ts');
 
 const SCHOOL = '0218195e-0000-0000-0000-000000000000';
@@ -143,55 +142,6 @@ function assertAuthzFilters(client) {
     'moet op EIGENAAR filteren — dit is de hele fase-2a-wijziging');
   assert.equal(ins.find(([c]) => c === 'school_role'), undefined,
     'geen owner|admin-lijst meer: admin mag het abonnement niet beheren');
-}
-
-// ── /api/checkout ──────────────────────────────────────────────────────
-
-test('checkout — autorisatiequery filtert op gebruiker, school, actief én rol', async () => {
-  reset();
-  currentClient = makeClient([NO_ROW]);
-  await checkoutPOST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
-  assertAuthzFilters(currentClient);
-});
-
-for (const geval of [
-  'ADMIN van deze rijschool (fase 2a: mag niet meer)',
-  'employee van deze rijschool',
-  'gebruiker zonder enige schoolkoppeling',
-  'gebruiker van een ANDERE rijschool',
-]) {
-  test(`checkout — ${geval} → 403 fail-closed, nul zijeffecten`, async () => {
-    reset();
-    // Alle drie leveren per constructie geen rij op: de query filtert op
-    // user_id + drivingschool_id + status + school_role (zie de test hierboven).
-    currentClient = makeClient([NO_ROW]);
-
-    const res = await checkoutPOST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
-
-    assert.equal(res.status, 403);
-    assert.equal(res.body.reason, 'subscription_management_forbidden');
-    assert.equal(mollie.calls.paymentsCreate.length, 0, 'geen betaling aangemaakt');
-    assert.equal(mollie.calls.customersCreate.length, 0, 'geen Mollie-customer aangemaakt');
-    assert.equal(currentClient.calls.length, 1, 'gestopt ná de autorisatiequery, geen enkele vervolgquery');
-    assert.equal(billingEvents.length, 0);
-  });
-}
-
-for (const [rol, rij] of [['owner', IS_OWNER]]) {
-  test(`checkout — ${rol} komt langs de rolcheck (bewezen met een onschadelijke fout erná)`, async () => {
-    reset();
-    // Bewust géén echte checkout: de school-lookup direct ná de rolcheck geeft
-    // niets terug, dus de route stopt daar. Dat bewijst de doorlaat zonder een
-    // betaling of mandaat na te spelen.
-    currentClient = makeClient([rij, { data: null, error: null }]);
-
-    const res = await checkoutPOST(reqFor({ school_id: SCHOOL, plan: 'premium' }));
-
-    assert.notEqual(res.status, 403, `${rol} mag niet op de rolcheck stranden`);
-    assert.ok(currentClient.calls.length >= 2, 'moet voorbij de autorisatiequery zijn gekomen');
-    assert.equal(currentClient.calls[1].table, 'drivingschools');
-    assert.equal(mollie.calls.paymentsCreate.length, 0, 'geen echte checkout in deze test');
-  });
 }
 
 // ── /api/cancel-subscription ───────────────────────────────────────────
