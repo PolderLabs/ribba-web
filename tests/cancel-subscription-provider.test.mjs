@@ -25,7 +25,6 @@ let adminNotifyCalls = [];
 let fetchCalls = [];
 
 mock.module('@supabase/supabase-js', { namedExports: { createClient: () => currentClient } });
-mock.module('@mollie/api-client', { namedExports: { createMollieClient: () => mollie } });
 mock.module('next/server', {
   namedExports: {
     NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) },
@@ -126,49 +125,12 @@ test('Stripe-school → edge-function-fout wordt doorgegeven (status + melding),
   assert.equal(res.body.error, 'Abonnement kan niet worden opgezegd.');
 });
 
-// ── 2. Mollie-regressie: bestaand pad ongewijzigd ────────────────────────────
-test('Mollie-school (geen actieve Stripe-sub) → bestaande Mollie-opzegflow, geen edge-function', async () => {
-  reset();
-  currentClient = makeClient([
-    { data: { id: 'instr-1' }, error: null },  // instructors
-    { data: [], error: null },                 // school_subscriptions: GEEN actieve Stripe
-    { data: { id: 'lic-1', mollie_customer_id: 'cst_X', external_subscription_id: 'sub_MOL', billing_plan: 'basic' }, error: null },
-    { data: null, error: null },               // license-update
-    { data: { name: 'Rijschool X', email: 'x@y.z', city: 'Rotterdam' }, error: null }, // drivingschools (admin-notify)
-  ]);
-
-  const res = await POST(makeReq());
-  assert.equal(res.status, 200);
-  assert.equal(res.body.success, true);
-
-  // Mollie gecanceld met de opgeslagen identifiers; edge function NIET aangeroepen
-  assert.equal(mollie.calls.cancel.length, 1);
-  assert.equal(mollie.calls.cancel[0].id, 'sub_MOL');
-  assert.equal(mollie.calls.cancel[0].opts.customerId, 'cst_X');
-  assert.equal(fetchCalls.length, 0);
-  assert.deepEqual(billingEvents.map((e) => e.event_type), ['subscription_cancelled']);
-});
-
-// ── 3. Conflict: twee actieve providers → fail closed ────────────────────────
-test('actieve Stripe-sub ÉN Mollie-IDs → fail closed (409), niets opgezegd, conflict gelogd', async () => {
-  reset();
-  currentClient = makeClient([
-    { data: { id: 'instr-1' }, error: null },
-    { data: [{ id: 'ssub-1' }], error: null },  // actieve Stripe
-    { data: { id: 'lic-1', mollie_customer_id: 'cst_X', external_subscription_id: 'sub_MOL', billing_plan: 'basic' }, error: null }, // Mollie-IDs
-  ]);
-
-  const res = await POST(makeReq());
-  assert.equal(res.status, 409);
-  // NIETS opgezegd
-  assert.equal(mollie.calls.cancel.length, 0);
-  assert.equal(fetchCalls.length, 0);
-  // conflict gelogd
-  assert.deepEqual(billingEvents.map((e) => e.event_type), ['cancel_provider_conflict']);
-});
-
 // ── 4. Geen abonnement → 404 ─────────────────────────────────────────────────
-test('geen actieve Stripe-sub én geen Mollie-koppeling → 404, niets aangeroepen', async () => {
+// Sinds 25 aug 2026 is dit het énige overgebleven niet-Stripe-geval. Het
+// Mollie-pad is verwijderd toen er nul Mollie-SaaS-abonnees over waren; een
+// school zonder actieve Stripe-sub krijgt daardoor meteen een eerlijk 404 in
+// plaats van via een onbereikbare tak op een fout uit te komen.
+test('geen actieve Stripe-sub → 404, niets aangeroepen', async () => {
   reset();
   currentClient = makeClient([
     { data: { id: 'instr-1' }, error: null },
@@ -196,20 +158,6 @@ test('Stripe-lookup queryfout → fail closed 500, niets opgezegd, Mollie niet a
   assert.deepEqual(billingEvents.map((e) => e.event_type), ['cancel_provider_lookup_failed']);
   // gestopt na de Stripe-query: geen licentie-query, geen doorval
   assert.equal(currentClient.calls.length, 2);
-});
-
-test('licentie-lookup queryfout → fail closed 500, niets opgezegd, Mollie niet aangeroepen', async () => {
-  reset();
-  currentClient = makeClient([
-    { data: { id: 'instr-1' }, error: null },
-    { data: [], error: null },                        // Stripe ok, geen actieve
-    { data: null, error: { message: 'db timeout' } }, // licentie-query FAALT
-  ]);
-  const res = await POST(makeReq());
-  assert.equal(res.status, 500);
-  assert.equal(mollie.calls.cancel.length, 0);
-  assert.equal(fetchCalls.length, 0);
-  assert.deepEqual(billingEvents.map((e) => e.event_type), ['cancel_provider_lookup_failed']);
 });
 
 test('edge-function time-out (AbortError) → fail closed 504, niets lokaal gemuteerd, Mollie niet aangeroepen', async () => {
