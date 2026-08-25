@@ -1,3 +1,42 @@
+# ribba-web
+
+⚠️ **Een merge naar `main` is in deze repo meteen een deploy naar productie**
+(`mijn.ribba.app`). Er zit geen handmatige releasestap tussen.
+
+## Mergen
+
+```bash
+node scripts/wacht-op-checks.mjs <pr-nummer>   # exit 0 = mergen mag
+gh pr merge <pr-nummer> --merge --delete-branch
+```
+
+Géén `--admin` — die wordt geweigerd. Sinds 25 aug 2026 heeft `main` twee
+verplichte checks:
+
+| check | wat hij dekt |
+|---|---|
+| `CI Gate` | hangt aan `Tests`, `Typecheck` en `Build`; groen zodra alle drie slagen |
+| `Vercel` | de preview-build — faalt hij, dan zou de productiedeploy breken |
+
+`enforce_admins` staat aan, dus ook de eigenaar komt er niet omheen.
+
+**Waarom dit er is.** Tot 25 aug 2026 draaide er in deze repo niets
+automatisch: de tests, `tsc --noEmit` en `next build` liepen alleen met de hand,
+en `main` was helemaal niet beschermd. Op diezelfde dag landde PR #77 met een
+gebroken testsuite zonder dat iets het opmerkte.
+
+**Waarom `--admin` niet meer werkt, en dat expres.** Wachten op checks met een
+zelfgeschreven lus ging op 24 en 25 augustus drie keer mis: vlak na
+`gh pr create` bestaan er nog nul checks, en "geen pending" is dan waar. Het
+script hierboven wacht daarom éérst tot alle verwachte checks er *zijn*.
+
+**Calamiteitenroute.** Is het een webdeploy-regressie, gebruik dan Vercel's
+rollback naar de vorige productiedeploy — dat is sneller en vereist geen merge.
+Alleen als een codefix naar `main` moet én CI zelf de blocker is: branch-
+bescherming bewust tijdelijk aanpassen en daarna meteen terugzetten.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
