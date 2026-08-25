@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Waarom deze workflow bestaat
+# ----------------------------
+# Tot 25 aug 2026 draaide er in deze repo NIETS automatisch. De 268 tests,
+# `tsc --noEmit` en `next build` liepen alleen als iemand ze met de hand
+# aanriep. De enige check op een PR was Vercel's preview-build, en die draait
+# geen enkele test.
+#
+# Dat is hier gevaarlijker dan in ribbaPro, want een merge naar `main` is in
+# deze repo meteen een deploy naar productie.
+#
+# Het bewijs kwam dezelfde dag: PR #77 landde met een gebroken testsuite. De
+# tests waren gedraaid vóór `npm install` een pakket verwijderde, daarna niet
+# meer, en niets ving dat op.
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # Draait óók bij Vercel, maar niet als poort: Vercel bouwt de preview en
+      # rapporteert los. Hier hoort hij bij de CI Gate, zodat een brekende build
+      # niet pas zichtbaar wordt wanneer de productiedeploy al onderweg is.
+      - run: npm run build
+
+  # ── De poort ────────────────────────────────────────────────────────────────
+  #
+  # Eén verplichte check boven de jobs hierboven, zodat branchbescherming niet
+  # hoeft te worden aangepast telkens als er een job bijkomt. Wie een job
+  # toevoegt zet hem in `needs`; tests/mergepoort.test.mjs dwingt af dat dat ook
+  # echt gebeurt.
+  #
+  # `if: always()` is essentieel: zonder dat wordt de gate zelf overgeslagen
+  # zodra een job faalt, en een overgeslagen required check rapporteert niets.
+  # De PR blijft dan hangen op "waiting for status" in plaats van eerlijk rood
+  # te worden.
+  #
+  # Bewust NIET hierin: `Vercel` en `CodeRabbit`. Dat zijn externe checks die
+  # niet uit deze workflow komen. `Vercel` staat apart in de branchbescherming;
+  # `CodeRabbit` niet, want die verschijnt niet op dependabot-PR's en zou elke
+  # afhankelijkheidsupdate voorgoed vastzetten.
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - test
+      - typecheck
+      - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Elke job moet geslaagd zijn
+        env:
+          RESULTATEN: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Uitkomsten: $RESULTATEN"
+          for r in $RESULTATEN; do
+            if [ "$r" != "success" ]; then
+              echo "::error::CI Gate dicht — minstens één job is '$r' in plaats van 'success'"
+              exit 1
+            fi
+          done
+          echo "CI Gate open — alle jobs geslaagd."

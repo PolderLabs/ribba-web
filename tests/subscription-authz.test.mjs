@@ -30,18 +30,13 @@ import assert from 'node:assert/strict';
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://proj.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-process.env.MOLLIE_API_KEY = 'test-mollie-key';
 process.env.NEXT_PUBLIC_BASE_URL = 'https://preview.test';
 
 let currentClient;
-let mollie;
 let billingEvents = [];
 let adminNotifyCalls = [];
 
 mock.module('@supabase/supabase-js', { namedExports: { createClient: () => currentClient } });
-mock.module('@mollie/api-client', {
-  namedExports: { createMollieClient: () => mollie, SequenceType: { first: 'first' } },
-});
 mock.module('next/server', {
   namedExports: {
     NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) },
@@ -79,20 +74,6 @@ function makeClient(responses, { user = { id: 'user-1' } } = {}) {
   };
 }
 
-function makeMollie() {
-  const calls = { paymentsCreate: [], customersCreate: [], subscriptionsCancel: [] };
-  return {
-    calls,
-    payments: {
-      create: async (p) => { calls.paymentsCreate.push(p); return { id: 'tr_X', getCheckoutUrl: () => 'https://mollie.test/c' }; },
-    },
-    customers: {
-      create: async (p) => { calls.customersCreate.push(p); return { id: 'cst_NEW' }; },
-      createSubscription: async () => ({ id: 'sub_X' }),
-      cancelSubscription: async (...a) => { calls.subscriptionsCancel.push(a); return {}; },
-    },
-  };
-}
 
 function reqFor(body) {
   return {
@@ -110,7 +91,6 @@ function reqFor(body) {
 function reset() {
   billingEvents = [];
   adminNotifyCalls = [];
-  mollie = makeMollie();
 }
 
 /** Geen rij: exact wat de DB teruggeeft bij employee, geen koppeling én verkeerde school. */
@@ -167,7 +147,6 @@ for (const geval of [
 
     assert.equal(res.status, 403);
     assert.equal(res.body.reason, 'subscription_management_forbidden');
-    assert.equal(mollie.calls.subscriptionsCancel.length, 0, 'geen abonnement opgezegd');
     assert.equal(currentClient.calls.length, 1, 'gestopt ná de autorisatiequery');
     assert.equal(billingEvents.length, 0);
   });
@@ -185,7 +164,6 @@ for (const [rol, rij] of [['owner', IS_OWNER]]) {
     assert.notEqual(res.status, 403, `${rol} mag niet op de rolcheck stranden`);
     assert.equal(res.status, 500);
     assert.equal(currentClient.calls[1].table, 'school_subscriptions');
-    assert.equal(mollie.calls.subscriptionsCancel.length, 0, 'geen echte opzegging in deze test');
     assert.equal(billingEvents.at(-1)?.event_type, 'cancel_provider_lookup_failed');
   });
 }
