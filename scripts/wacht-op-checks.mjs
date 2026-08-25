@@ -137,18 +137,77 @@ export function beoordeel(verwacht, checks) {
 
 // ── Uitvoering ──────────────────────────────────────────────────────────────
 
+/**
+ * De checks van de HUIDIGE head-commit van een PR.
+ *
+ * Bewust niet `gh pr checks`: die geeft na een nieuwe push nog even de uitslag
+ * van de vórige commit terug. Op 25 aug 2026 liep dit script daardoor meteen
+ * op "POORT DICHT" terwijl de nieuwe run net was gestart — het oordeelde over
+ * werk dat al vervangen was.
+ *
+ * Twee bronnen, want GitHub kent twee soorten: check-runs (GitHub Actions) en
+ * commit statuses (externe integraties zoals Vercel). Beide worden hier tot
+ * dezelfde vorm teruggebracht.
+ */
 function haalChecks(pr) {
-  try {
-    const uit = execFileSync('gh', ['pr', 'checks', String(pr), '--json', 'name,state,bucket'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return JSON.parse(uit);
-  } catch {
-    // `gh pr checks` geeft een foutstatus zolang er nog geen enkele check is.
-    // Dat is geen fout maar precies de toestand waar dit script voor bestaat.
-    return [];
+  const uitvoeren = (args) => {
+    try {
+      return JSON.parse(
+        execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }),
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const prInfo = uitvoeren(['pr', 'view', String(pr), '--json', 'headRefOid']);
+  const sha = prInfo?.headRefOid;
+  if (!sha) return [];
+
+  const repo = execFileSync('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], {
+    encoding: 'utf8',
+  }).trim();
+
+  const uit = [];
+
+  const runs = uitvoeren(['api', `repos/${repo}/commits/${sha}/check-runs`]);
+  for (const r of runs?.check_runs ?? []) {
+    uit.push({ name: r.name, state: r.conclusion ?? r.status, bucket: bucketVanCheckRun(r) });
   }
+
+  const statuses = uitvoeren(['api', `repos/${repo}/commits/${sha}/status`]);
+  for (const st of statuses?.statuses ?? []) {
+    uit.push({ name: st.context, state: st.state, bucket: bucketVanStatus(st.state) });
+  }
+
+  return uit;
+}
+
+/** Een GitHub Actions check-run naar dezelfde vier emmers. */
+export function bucketVanCheckRun(run) {
+  if (run.status !== 'completed') return 'pending';
+  switch (run.conclusion) {
+    case 'success':
+      return 'pass';
+    case 'skipped':
+    case 'neutral':
+      return 'skipping';
+    case 'cancelled':
+      return 'cancel';
+    case 'action_required':
+      // Wacht op een mens. Geen rood, maar ook niet groen — de timeout noemt
+      // hem dan bij naam in plaats van dat hij stil als geslaagd telt.
+      return 'pending';
+    default:
+      return 'fail';
+  }
+}
+
+/** Een commit status (Vercel, CodeRabbit) naar dezelfde vier emmers. */
+export function bucketVanStatus(state) {
+  if (state === 'success') return 'pass';
+  if (state === 'pending') return 'pending';
+  return 'fail';
 }
 
 const wacht = (ms) => new Promise((r) => setTimeout(r, ms));

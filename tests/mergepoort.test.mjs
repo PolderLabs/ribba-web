@@ -123,3 +123,48 @@ test('overgeslagen blokkeert niet', () => {
   const o = beoordeel(['A', 'B'], [check('A', 'skipping'), check('B', 'pass')]);
   assert.deepEqual([o.klaar, o.groen], [true, true]);
 });
+
+// ── de twee soorten checks ───────────────────────────────────────────────────
+//
+// GitHub kent er twee: check-runs (GitHub Actions) en commit statuses (externe
+// integraties zoals Vercel). Ze hebben verschillende velden en verschillende
+// woorden voor hetzelfde. Dit is de vertaling naar één vorm.
+//
+// De aanleiding: op 25 aug 2026 keek dit script naar de PR in plaats van naar de
+// commit, en oordeelde daardoor op de uitslag van een commit die al vervangen
+// was — "POORT DICHT" terwijl de nieuwe run net was gestart.
+
+import { bucketVanCheckRun, bucketVanStatus } from '../scripts/wacht-op-checks.mjs';
+
+test('een lopende check-run is bezig, wat de conclusie ook zegt', () => {
+  assert.equal(bucketVanCheckRun({ status: 'in_progress', conclusion: null }), 'pending');
+  assert.equal(bucketVanCheckRun({ status: 'queued', conclusion: null }), 'pending');
+});
+
+test('een afgeronde check-run vertaalt naar de juiste emmer', () => {
+  const v = (conclusion) => bucketVanCheckRun({ status: 'completed', conclusion });
+  assert.equal(v('success'), 'pass');
+  assert.equal(v('skipped'), 'skipping');
+  assert.equal(v('neutral'), 'skipping');
+  assert.equal(v('cancelled'), 'cancel');
+  assert.equal(v('failure'), 'fail');
+  assert.equal(v('timed_out'), 'fail');
+});
+
+test('action_required telt als bezig, niet stilzwijgend als geslaagd', () => {
+  // Zo'n check wacht op een mens. Hem als groen tellen zou de poort openzetten
+  // op iets wat niemand heeft bekeken; de timeout noemt hem straks bij naam.
+  assert.equal(bucketVanCheckRun({ status: 'completed', conclusion: 'action_required' }), 'pending');
+});
+
+test('een onbekende conclusie is fail, niet pass', () => {
+  // Bij twijfel dicht. Een nieuwe conclusiewaarde van GitHub mag geen gat maken.
+  assert.equal(bucketVanCheckRun({ status: 'completed', conclusion: 'iets_nieuws' }), 'fail');
+});
+
+test('commit statuses vertalen net zo', () => {
+  assert.equal(bucketVanStatus('success'), 'pass');
+  assert.equal(bucketVanStatus('pending'), 'pending');
+  assert.equal(bucketVanStatus('failure'), 'fail');
+  assert.equal(bucketVanStatus('error'), 'fail');
+});
