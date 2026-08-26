@@ -12,6 +12,7 @@ import {
   type UpgradePlan,
 } from '@/lib/stripe-upgrade';
 import { canManageSubscriptionFrom } from '@/lib/subscription-access';
+import Link from 'next/link';
 
 const basicPricing = getPlanPricing('basic');
 const premiumPricing = getPlanPricing('premium');
@@ -637,7 +638,7 @@ function UpgradeContent() {
           </p>
           <p style={{ fontSize: 14, color: '#78716C', marginTop: 8 }}>
             Al een abonnement? Beheer facturen, betaalmethode en opzegging via{' '}
-            <a href="/mijn-ribba" style={{ color: '#2563EB', fontWeight: 600 }}>Mijn Ribba</a>.
+            <Link href="/mijn-ribba" style={{ color: '#2563EB', fontWeight: 600 }}>Mijn Ribba</Link>.
           </p>
           <div className="divider" />
           <p style={{ fontSize: 13, color: '#A8A29E' }}>

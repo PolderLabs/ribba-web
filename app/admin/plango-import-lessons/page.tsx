@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../../components/RibbaLogo';
+import Link from 'next/link';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -150,7 +151,7 @@ export default function PlangoImportLessonsPage() {
           Migreer agenda-lessen en huidig tegoed van een Plango rijschool.
           <br />
           <strong>Let op:</strong> leerlingen moeten eerst zijn geïmporteerd via{' '}
-          <a href="/admin/plango-import" style={{ color: '#5eead4' }}>de leerlingen migratie</a>.
+          <Link href="/admin/plango-import" style={{ color: '#5eead4' }}>de leerlingen migratie</Link>.
         </p>
 
         {phase === 'login' && (
