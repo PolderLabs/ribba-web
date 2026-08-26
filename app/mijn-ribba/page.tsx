@@ -13,6 +13,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
 import { createPortalGate, openStripePortal } from '@/lib/stripe-upgrade';
 import { canManageSubscriptionFrom } from '@/lib/subscription-access';
+import Link from 'next/link';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -161,7 +162,7 @@ export default function MijnRibbaPage() {
             <div className="divider" />
 
             <p className="footer-text">
-              Abonnement kiezen of wijzigen? <a href="/upgrade">Bekijk de plannen</a>.<br />
+              Abonnement kiezen of wijzigen? <Link href="/upgrade">Bekijk de plannen</Link>.<br />
               Vragen? <a href="mailto:team@ribba.app">team@ribba.app</a>
             </p>
           </>

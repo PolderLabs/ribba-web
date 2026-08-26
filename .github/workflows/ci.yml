@@ -45,6 +45,22 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # Stond tot 25 aug 2026 buiten de poort omdat `main` er zelf vijf fouten
+      # op had: vier `<a>`-elementen die `<Link>` horen te zijn, en een
+      # setState-in-effect. Een poort die main niet haalt kan niet aan, en
+      # `continue-on-error` zou een poort zijn die doet alsof.
+      - run: npm run lint
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -82,6 +98,7 @@ jobs:
     needs:
       - test
       - typecheck
+      - lint
       - build
     runs-on: ubuntu-latest
 

@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import RibbaLogo from '../components/RibbaLogo';
+import Link from 'next/link';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -167,7 +168,7 @@ export default function LoginPage() {
         <div className="divider" />
 
         <p className="footer-text" style={{ textAlign: 'center' }}>
-          <a href="/reset">Wachtwoord vergeten?</a>
+          <Link href="/reset">Wachtwoord vergeten?</Link>
         </p>
         <p className="footer-text" style={{ textAlign: 'center', marginTop: 8 }}>
           Vragen? Neem contact op met{' '}

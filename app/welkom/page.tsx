@@ -16,37 +16,49 @@ export default function WelkomPage() {
   const [mode, setMode] = useState<'loading' | 'verified' | 'invalid'>('loading');
 
   useEffect(() => {
+    // De hash lezen kan alleen ná het monteren: `window.location.hash` bestaat
+    // niet tijdens het serverrenderen. De beginwaarde lui berekenen met
+    // `useState(() => …)` kan hier daarom níet — Next.js rendert deze
+    // clientcomponent ook op de server, en die zou 'loading' opleveren waar de
+    // client meteen 'verified' toont. Dat is een hydratiemismatch.
+    //
+    // Daarom eerst uitrekenen wat de uitkomst is, en dan hooguit één keer
+    // schrijven. De asynchrone tak schrijft later, wanneer Supabase antwoordt.
     const hash = window.location.hash;
-    if (hash && hash.includes('access_token')) {
-      window.history.replaceState({}, '', '/welkom');
+    const heeftToken = Boolean(hash && hash.includes('access_token'));
+    const heeftFout = Boolean(hash && hash.includes('error='));
 
-      const supabase = getSupabase();
+    if (heeftToken || heeftFout) {
+      // De tokens uit de balk halen vóór er iets op het scherm verschijnt.
+      window.history.replaceState({}, '', '/welkom');
+    }
+
+    if (heeftToken) {
       const params = new URLSearchParams(hash.substring(1));
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
 
       if (accessToken && refreshToken) {
-        supabase.auth
-          .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        getSupabase()
+          .auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
           .then(({ error }) => {
             if (error) {
               setMode('invalid');
-            } else {
-              setMode('verified');
-              // Sign out — they should log in via the app, not stay logged in on web
-              supabase.auth.signOut();
+              return;
             }
+            setMode('verified');
+            // Uitloggen: ze horen in de app in te loggen, niet op het web te
+            // blijven hangen.
+            getSupabase().auth.signOut();
           });
-      } else {
-        setMode('invalid');
+        return;
       }
-    } else if (hash && hash.includes('error=')) {
-      window.history.replaceState({}, '', '/welkom');
-      setMode('invalid');
-    } else {
-      // No hash — likely opened directly. Show generic welcome.
-      setMode('verified');
     }
+
+    // Eén synchrone schrijfactie, en alleen deze. Geen hash betekent dat iemand
+    // de pagina rechtstreeks opende; dan tonen we het gewone welkomstscherm.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- zie de kop van dit effect: de uitkomst hangt af van window.location.hash en is pas ná het monteren bekend.
+    setMode(heeftToken || heeftFout ? 'invalid' : 'verified');
   }, []);
 
   if (mode === 'loading') {
