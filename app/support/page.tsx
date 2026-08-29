@@ -15,7 +15,7 @@ import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
 import { getSupabase } from './client';
 
-type Fase = 'laden' | 'login' | 'tweefactor-instellen' | 'tweefactor-invoeren' | 'portaal';
+type Fase = 'laden' | 'login' | 'geen-toegang' | 'tweefactor-instellen' | 'tweefactor-invoeren' | 'portaal';
 
 interface School {
   school_id: string;
@@ -71,9 +71,27 @@ export default function SupportPage() {
   const [scholen, setScholen] = useState<School[]>([]);
   const [toonIntern, setToonIntern] = useState(false);
 
-  // Waar staat de gebruiker: uitgelogd, tweede factor nog niet ingesteld,
-  // tweede factor nog niet gebruikt, of binnen? Bewust zonder setState, zodat
-  // zowel het opstarten als een handeling hem kan gebruiken.
+  // Mag dit account aan de support-tweefactor beginnen? Uitsluitend de server
+  // beantwoordt dat; hier wordt niets over rollen geraden. Alles behalve een
+  // expliciete `true` telt als nee — een netwerkfout of een kapotte lookup mag
+  // niemand naar de QR-code leiden.
+  const isSupportmedewerker = useCallback(async (accessToken: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/support/eligibility', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return false;
+      const body = await res.json();
+      return body?.eligible === true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Waar staat de gebruiker: uitgelogd, geen supportmedewerker, tweede factor
+  // nog niet ingesteld, tweede factor nog niet gebruikt, of binnen? Bewust
+  // zonder setState, zodat zowel het opstarten als een handeling hem kan
+  // gebruiken.
   const bepaalFase = useCallback(async (): Promise<{ fase: Fase; factorId?: string }> => {
     const { data: { session } } = await getSupabase().auth.getSession();
     if (!session) return { fase: 'login' };
@@ -81,12 +99,20 @@ export default function SupportPage() {
     const { data: aal } = await getSupabase().auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal?.currentLevel === 'aal2') return { fase: 'portaal' };
 
+    // Vóór álles wat met factoren te maken heeft. Een gewone leerling of
+    // instructeur die hier belandt, kreeg eerder eerst een QR-code en pas
+    // daarna te horen dat hij geen support is — met een achtergelaten factor
+    // die zijn eigen wachtwoordreset raakt. Zie app/api/support/eligibility.
+    if (!(await isSupportmedewerker(session.access_token))) {
+      return { fase: 'geen-toegang' };
+    }
+
     const { data: factors } = await getSupabase().auth.mfa.listFactors();
     if (factors?.totp?.length) {
       return { fase: 'tweefactor-invoeren', factorId: factors.totp[0].id };
     }
     return { fase: 'tweefactor-instellen' };
-  }, []);
+  }, [isSupportmedewerker]);
 
   // Vraagt Supabase om een nieuwe TOTP-factor en toont de QR-code.
   const startInstellen = useCallback(async () => {
@@ -194,6 +220,29 @@ export default function SupportPage() {
               {bezig ? 'Bezig…' : 'Inloggen'}
             </button>
           </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Ingelogd, maar geen supportmedewerker. Bewust vóór elke factorhandeling:
+  // wie hier belandt heeft een gewoon Ribba-account en hoort geen tweede factor
+  // aan dat account over te houden. Geen QR, geen enroll.
+  if (fase === 'geen-toegang') {
+    return (
+      <div style={s.container}>
+        <div style={s.kaart}>
+          <RibbaLogo height={32} />
+          <h1 style={s.h1}>Geen toegang</h1>
+          <p style={s.stil}>
+            Dit portaal is alleen voor medewerkers van Ribba. Je bent ingelogd,
+            maar dit account heeft er geen toegang toe. Er is niets aan je account
+            gewijzigd.
+          </p>
+          <p style={s.stil}>
+            Wil je naar je eigen omgeving? Ga naar <Link href="/mijn-ribba">mijn.ribba.app</Link>.
+          </p>
+          <button style={s.knop} type="button" onClick={uitloggen}>Uitloggen</button>
         </div>
       </div>
     );
