@@ -14,8 +14,9 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import RibbaLogo from '../components/RibbaLogo';
 import { getSupabase } from './client';
+import { kiesFactorpad, type Factoroptie } from '@/lib/support-factorkeuze';
 
-type Fase = 'laden' | 'login' | 'geen-toegang' | 'tweefactor-instellen' | 'tweefactor-invoeren' | 'portaal';
+type Fase = 'laden' | 'login' | 'geen-toegang' | 'tweefactor-instellen' | 'tweefactor-kiezen' | 'tweefactor-invoeren' | 'portaal';
 
 interface School {
   school_id: string;
@@ -67,6 +68,7 @@ export default function SupportPage() {
   const [qr, setQr] = useState('');
   const [geheim, setGeheim] = useState('');
   const [factorId, setFactorId] = useState('');
+  const [factorOpties, setFactorOpties] = useState<Factoroptie[]>([]);
 
   const [scholen, setScholen] = useState<School[]>([]);
   const [toonIntern, setToonIntern] = useState(false);
@@ -92,7 +94,7 @@ export default function SupportPage() {
   // nog niet ingesteld, tweede factor nog niet gebruikt, of binnen? Bewust
   // zonder setState, zodat zowel het opstarten als een handeling hem kan
   // gebruiken.
-  const bepaalFase = useCallback(async (): Promise<{ fase: Fase; factorId?: string }> => {
+  const bepaalFase = useCallback(async (): Promise<{ fase: Fase; factorId?: string; opties?: Factoroptie[] }> => {
     const { data: { session } } = await getSupabase().auth.getSession();
     if (!session) return { fase: 'login' };
 
@@ -107,11 +109,14 @@ export default function SupportPage() {
       return { fase: 'geen-toegang' };
     }
 
+    // Welke factor? Die vraag staat in lib/support-factorkeuze.ts, zodat hij
+    // toetsbaar is zonder browser. Bij twee factoren kiest de gebruiker zelf —
+    // anders zou een reservefactor onbereikbaar zijn en dus waardeloos.
     const { data: factors } = await getSupabase().auth.mfa.listFactors();
-    if (factors?.totp?.length) {
-      return { fase: 'tweefactor-invoeren', factorId: factors.totp[0].id };
-    }
-    return { fase: 'tweefactor-instellen' };
+    const pad = kiesFactorpad(factors?.all);
+    if (pad.soort === 'instellen') return { fase: 'tweefactor-instellen' };
+    if (pad.soort === 'invoeren') return { fase: 'tweefactor-invoeren', factorId: pad.factorId };
+    return { fase: 'tweefactor-kiezen', opties: pad.opties };
   }, [isSupportmedewerker]);
 
   // Vraagt Supabase om een nieuwe TOTP-factor en toont de QR-code.
@@ -128,8 +133,12 @@ export default function SupportPage() {
     setGeheim(data.totp.secret);
   }, []);
 
-  const naarFase = useCallback(async (uitkomst: { fase: Fase; factorId?: string }) => {
-    if (uitkomst.factorId) setFactorId(uitkomst.factorId);
+  const naarFase = useCallback(async (uitkomst: { fase: Fase; factorId?: string; opties?: Factoroptie[] }) => {
+    // Bij een keuzescherm bewust de vorige factor wissen. Anders zou een
+    // herlading de eerder gekozen factor laten staan en zou een verkeerde
+    // uitdaging kunnen vertrekken zonder dat de gebruiker dat ziet.
+    setFactorId(uitkomst.factorId ?? '');
+    setFactorOpties(uitkomst.opties ?? []);
     setFase(uitkomst.fase);
     if (uitkomst.fase === 'tweefactor-instellen') await startInstellen();
   }, [startInstellen]);
@@ -242,6 +251,39 @@ export default function SupportPage() {
           <p style={s.stil}>
             Wil je naar je eigen omgeving? Ga naar <Link href="/mijn-ribba">mijn.ribba.app</Link>.
           </p>
+          <button style={s.knop} type="button" onClick={uitloggen}>Uitloggen</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Twee of meer geverifieerde factoren: de gebruiker kiest zelf. Bewust geen
+  // automatische terugval — een reservefactor bewaar je juist apart, dus het
+  // portaal mag er nooit ongevraagd eentje uitdagen. Alleen namen, nooit id's.
+  if (fase === 'tweefactor-kiezen') {
+    return (
+      <div style={s.container}>
+        <div style={s.kaart}>
+          <h1 style={s.h1}>Kies je verificatiemethode</h1>
+          <p style={s.stil}>
+            Er staan meerdere authenticators op dit account. Kies degene die je bij
+            de hand hebt.
+          </p>
+          {factorOpties.map((optie) => (
+            <button
+              key={optie.id}
+              style={s.knop}
+              type="button"
+              onClick={() => {
+                setFout('');
+                setCode('');
+                setFactorId(optie.id);
+                setFase('tweefactor-invoeren');
+              }}
+            >
+              {optie.naam}
+            </button>
+          ))}
           <button style={s.knop} type="button" onClick={uitloggen}>Uitloggen</button>
         </div>
       </div>
