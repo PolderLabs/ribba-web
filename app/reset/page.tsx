@@ -162,7 +162,7 @@ export default function ResetPage() {
         // nooit als tweede factor gelden.
         const totp = factors?.totp?.find((f: Factor) => f.status === 'verified');
         if (!totp) {
-          naarFout('Dit account heeft tweefactor aan, maar er is geen werkende app gekoppeld. Neem contact op met team@ribba.app.');
+          naarFout('Dit account heeft tweefactor aan, maar er is geen werkende app gekoppeld. Neem contact op met team@ribba.nl.');
           return;
         }
         setFactorId(totp.id);

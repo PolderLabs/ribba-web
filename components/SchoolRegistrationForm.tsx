@@ -437,7 +437,7 @@ export default function SchoolRegistrationForm() {
           {aanbodFout && (
             <p style={{ margin: 0, fontSize: 14, color: '#B45309', lineHeight: 1.5 }}>
               We kunnen het actuele aanbod nu niet ophalen. Probeer het later opnieuw of mail{' '}
-              <a href="mailto:team@ribba.app">team@ribba.app</a>.
+              <a href="mailto:team@ribba.nl">team@ribba.nl</a>.
             </p>
           )}
           {!aanbod && !aanbodFout && (
@@ -1016,7 +1016,7 @@ export default function SchoolRegistrationForm() {
       {aanbodVereistVoorInschrijven && aanbodFout && (
         <div className="alert alert-error" style={{ marginTop: 20 }}>
           Inschrijven lukt nu niet — we kunnen het actuele aanbod niet ophalen.
-          Probeer het later opnieuw of mail <a href="mailto:team@ribba.app">team@ribba.app</a>.
+          Probeer het later opnieuw of mail <a href="mailto:team@ribba.nl">team@ribba.nl</a>.
         </div>
       )}
 
