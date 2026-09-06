@@ -61,14 +61,14 @@ export default function InschrijvingOntvangenPage() {
 
         <p style={{ fontSize: 14, color: '#78716C', lineHeight: 1.6 }}>
           Geen e-mail ontvangen? Kijk eerst in je spam. Blijft hij weg, mail dan{' '}
-          <a href="mailto:team@ribba.app">team@ribba.app</a> — we zoeken het voor
+          <a href="mailto:team@ribba.nl">team@ribba.nl</a> — we zoeken het voor
           je uit.
         </p>
 
         <div className="divider" />
 
         <p className="footer-text">
-          Vragen? Neem contact op met <a href="mailto:team@ribba.app">team@ribba.app</a>
+          Vragen? Neem contact op met <a href="mailto:team@ribba.nl">team@ribba.nl</a>
         </p>
       </section>
 

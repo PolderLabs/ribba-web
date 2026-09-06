@@ -162,7 +162,7 @@ export default function ResetPage() {
         // nooit als tweede factor gelden.
         const totp = factors?.totp?.find((f: Factor) => f.status === 'verified');
         if (!totp) {
-          naarFout('Dit account heeft tweefactor aan, maar er is geen werkende app gekoppeld. Neem contact op met team@ribba.app.');
+          naarFout('Dit account heeft tweefactor aan, maar er is geen werkende app gekoppeld. Neem contact op met team@ribba.nl.');
           return;
         }
         setFactorId(totp.id);
@@ -373,7 +373,7 @@ export default function ResetPage() {
           <div className="divider" />
           <p className="footer-text">
             Vragen? Neem contact op met{' '}
-            <a href="mailto:team@ribba.app">team@ribba.app</a>
+            <a href="mailto:team@ribba.nl">team@ribba.nl</a>
           </p>
         </section>
       </main>
@@ -548,7 +548,7 @@ export default function ResetPage() {
 
         <p className="footer-text">
           Vragen? Neem contact op met{' '}
-          <a href="mailto:team@ribba.app">team@ribba.app</a>
+          <a href="mailto:team@ribba.nl">team@ribba.nl</a>
         </p>
       </section>
     </main>

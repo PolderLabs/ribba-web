@@ -68,8 +68,8 @@ export default async function SchoolPage({ params }: Props) {
           <p className="registration-description">
             Deze inschrijflink bestaat niet (meer) of registratie is uitgeschakeld.
             Controleer de link of neem contact op via{' '}
-            <a href="mailto:team@ribba.app" className="text-link">
-              team@ribba.app
+            <a href="mailto:team@ribba.nl" className="text-link">
+              team@ribba.nl
             </a>
             .
           </p>
@@ -100,7 +100,7 @@ export default async function SchoolPage({ params }: Props) {
 
         <p className="footer-text">
           Vragen? Neem contact op met{' '}
-          <a href="mailto:team@ribba.app">team@ribba.app</a>
+          <a href="mailto:team@ribba.nl">team@ribba.nl</a>
         </p>
       </section>
     </main>

@@ -518,7 +518,7 @@ export async function POST(request: NextRequest) {
         </div>
         <p style="color: #94a3b8; font-size: 13px; margin: 24px 0 0 0;">
           Geen account aangemaakt bij Ribba? Negeer deze e-mail dan.<br>
-          Vragen? Mail ons op <a href="mailto:team@ribba.app" style="color: #2563EB;">team@ribba.app</a>
+          Vragen? Mail ons op <a href="mailto:team@ribba.nl" style="color: #2563EB;">team@ribba.nl</a>
         </p>
       </div>
       `,

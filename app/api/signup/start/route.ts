@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       deps = maakOfferDeps();
     } catch {
       console.error('signup/start: STRIPE_SECRET_KEY ontbreekt');
-      return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.app.', 503);
+      return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.nl.', 503);
     }
     const stripe = deps.stripe;
 
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
       // aanbod waar wij geen rechten aan kunnen koppelen.
       console.error('signup/start: aanbod geweigerd',
         { plan: INSCHRIJFPLAN, reason: aanbod.reason, detail: aanbod.detail });
-      return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.app.', 503,
+      return fout('Inschrijven is tijdelijk niet mogelijk. Mail team@ribba.nl.', 503,
         { reason: aanbod.reason });
     }
 

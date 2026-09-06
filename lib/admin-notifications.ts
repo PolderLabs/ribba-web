@@ -7,7 +7,7 @@ import { logBillingEvent } from './billing-events';
 import { DOMAIN } from './domains';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || 'team@ribba.app';
+const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || 'team@ribba.nl';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || DOMAIN.account;
@@ -259,7 +259,7 @@ function buildHtml(type: AdminEventType, school: SchoolInfo, stats: Stats): stri
       <!-- Footer -->
       <tr><td style="background:#F8FAFC;padding:18px 32px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
         Automatisch verzonden door Ribba B.V. ·
-        <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
+        <a href="mailto:team@ribba.nl" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.nl</a>
       </td></tr>
 
     </table>

@@ -489,7 +489,7 @@ export default function VerwerkersovereenkomstPage() {
       </p>
       <ul style={styles.ul}>
         <li style={styles.li}>
-          <strong>E-mail:</strong> team@ribba.app
+          <strong>E-mail:</strong> team@ribba.nl
         </li>
         <li style={styles.li}>
           <strong>Website:</strong> ribba.app
