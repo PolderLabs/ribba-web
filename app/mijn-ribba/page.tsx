@@ -162,13 +162,8 @@ export default function MijnRibbaPage() {
             <div className="divider" />
 
             <p className="footer-text">
-<<<<<<< Updated upstream
               Abonnement kiezen of wijzigen? <Link href="/upgrade">Bekijk de plannen</Link>.<br />
               Vragen? <a href="mailto:team@ribba.nl">team@ribba.nl</a>
-=======
-              Abonnement kiezen of wijzigen? <a href="/upgrade">Bekijk de plannen</a>.<br />
-              Vragen? <a href="mailto:team@ribba.nl">team@ribba.nl</a>
->>>>>>> Stashed changes
             </p>
           </>
         )}
