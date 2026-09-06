@@ -74,7 +74,7 @@ alleen test-mode) → de reguliere SetupIntent-flow.
    het platform achter.
 4. `payment_intent.payment_failed` → `failed` + mail naar de school; herstel
    via `referral_retry_payout` (of één automatische retry door de cron).
-5. Disputes/refunds → ops-alert naar team@ribba.app; transfer-reversal is in
+5. Disputes/refunds → ops-alert naar team@ribba.nl; transfer-reversal is in
    v1 een handmatige actie in het Stripe-dashboard.
 
 ## Env-variabelen & Stripe-configuratie

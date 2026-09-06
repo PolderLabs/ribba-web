@@ -643,8 +643,8 @@ function UpgradeContent() {
           <div className="divider" />
           <p style={{ fontSize: 13, color: '#A8A29E' }}>
             Vragen?{' '}
-            <a href="mailto:team@ribba.app" style={{ color: '#2563EB', fontWeight: 600 }}>
-              team@ribba.app
+            <a href="mailto:team@ribba.nl" style={{ color: '#2563EB', fontWeight: 600 }}>
+              team@ribba.nl
             </a>
           </p>
         </div>

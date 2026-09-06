@@ -38,7 +38,7 @@ async function sendEmail(to: string, subject: string, html: string) {
       from: 'Ribba <noreply@ribba.app>',
       to,
       // BCC het team zodat we studenten-aanvragen (inschrijvingen) kunnen meelezen.
-      bcc: 'team@ribba.app',
+      bcc: 'team@ribba.nl',
       subject,
       html,
     }),
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
         </div>
         <p style="color: #94a3b8; font-size: 13px; margin-top: 32px;">
           Dit is een automatisch bericht van Ribba.<br>
-          Vragen? Mail ons op <a href="mailto:team@ribba.app" style="color: #2563EB;">team@ribba.app</a>
+          Vragen? Mail ons op <a href="mailto:team@ribba.nl" style="color: #2563EB;">team@ribba.nl</a>
         </p>
       </div>
       `,

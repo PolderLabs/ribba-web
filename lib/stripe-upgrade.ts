@@ -78,7 +78,7 @@ export type StartCheckoutResult =
 
 /** Nederlandse fallback wanneer de server geen bruikbare fout meegeeft. */
 export const GENERIC_CHECKOUT_ERROR =
-  'De betaalpagina kon niet worden geopend. Probeer het opnieuw of mail team@ribba.app.';
+  'De betaalpagina kon niet worden geopend. Probeer het opnieuw of mail team@ribba.nl.';
 export const NETWORK_CHECKOUT_ERROR =
   'Kan geen verbinding maken. Controleer je internet en probeer het opnieuw.';
 
@@ -145,7 +145,7 @@ export async function startStripeCheckout(opts: {
 // alleen school_id ter disambiguatie mee.
 
 export const GENERIC_PORTAL_ERROR =
-  'De beheerpagina kon niet worden geopend. Probeer het opnieuw of mail team@ribba.app.';
+  'De beheerpagina kon niet worden geopend. Probeer het opnieuw of mail team@ribba.nl.';
 
 export type PortalGate = {
   /**

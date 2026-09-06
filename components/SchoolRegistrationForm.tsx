@@ -421,7 +421,7 @@ export default function SchoolRegistrationForm() {
         </div>
         <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 16 }}>
           Geen mail ontvangen? Check je spam-folder of mail ons op{' '}
-          <a href="mailto:team@ribba.app" style={{ color: '#2563EB' }}>team@ribba.app</a>
+          <a href="mailto:team@ribba.nl" style={{ color: '#2563EB' }}>team@ribba.nl</a>
         </p>
       </div>
     );

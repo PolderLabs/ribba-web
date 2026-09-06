@@ -92,7 +92,7 @@ export default function WelkomPage() {
 
           <div className="divider" />
           <p className="footer-text">
-            Vragen? Neem contact op met <a href="mailto:team@ribba.app">team@ribba.app</a>
+            Vragen? Neem contact op met <a href="mailto:team@ribba.nl">team@ribba.nl</a>
           </p>
         </section>
       </main>
@@ -120,7 +120,7 @@ export default function WelkomPage() {
 
         <div className="divider" />
         <p className="footer-text">
-          Vragen? Neem contact op met <a href="mailto:team@ribba.app">team@ribba.app</a>
+          Vragen? Neem contact op met <a href="mailto:team@ribba.nl">team@ribba.nl</a>
         </p>
       </section>
     </main>

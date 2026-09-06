@@ -132,7 +132,7 @@ function wrap(opts: WrapOpts): string {
       <!-- Footer -->
       <tr><td style="background:#F8FAFC;padding:18px 32px;margin-top:24px;font-size:12px;text-align:center;color:#94A3B8;border-top:1px solid #E2E8F0">
         Ribba B.V. · vragen?
-        <a href="mailto:team@ribba.app" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.app</a>
+        <a href="mailto:team@ribba.nl" style="color:#2563EB;text-decoration:none;font-weight:600">team@ribba.nl</a>
       </td></tr>
 
     </table>
@@ -323,7 +323,7 @@ export async function sendPartnerKycNudgeMail(params: {
   });
 }
 
-// Interne alert naar team@ribba.app (disputes/refunds op referral-incasso's:
+// Interne alert naar team@ribba.nl (disputes/refunds op referral-incasso's:
 // handmatige ops-actie nodig, bv. transfer-reversal).
 export async function sendTeamReferralAlertMail(params: {
   schoolId: string;
@@ -339,7 +339,7 @@ export async function sendTeamReferralAlertMail(params: {
       .map((l) => `<p style="margin:0 0 8px;font-size:14px;color:#1E293B">${escapeHtml(l)}</p>`)
       .join(''),
   });
-  await sendMail('team@ribba.app', `[referral] ${params.subject}`, html, {
+  await sendMail('team@ribba.nl', `[referral] ${params.subject}`, html, {
     schoolId: params.schoolId,
     emailType: 'referral_ops_alert',
   });
