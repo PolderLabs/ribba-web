@@ -285,7 +285,7 @@ export async function sendAdminNotification(type: AdminEventType, school: School
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Ribba <noreply@ribba.app>',
+        from: 'Ribba <noreply@ribba.nl>',
         to: ADMIN_EMAIL,
         subject: `${ev.subject}: ${school.name}`,
         html,

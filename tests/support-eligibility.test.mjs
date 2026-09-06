@@ -46,7 +46,7 @@ mock.module('next/server', {
 
 const { GET } = await import('../app/api/support/eligibility/route.ts');
 
-const STAFF = { id: 'staff-1', email: 'support@ribba.app' };
+const STAFF = { id: 'staff-1', email: 'support@ribba.nl' };
 const LEERLING = { id: 'leerling-9', email: 'leerling@example.com' };
 
 function makeClient({ user = STAFF, authError = null, isStaff = true, staffError = null, logError = null } = {}) {
@@ -186,7 +186,7 @@ test('het antwoord bevat nooit supportdata', async () => {
   const tekst = JSON.stringify(res.body);
   assert.ok(!tekst.includes('school'), 'geen scholen');
   assert.ok(!tekst.includes('staff-1'), 'zelfs het eigen user-id hoeft er niet in');
-  assert.ok(!tekst.includes('support@ribba.app'), 'geen e-mailadres');
+  assert.ok(!tekst.includes('support@ribba.nl'), 'geen e-mailadres');
 });
 
 test('weigering wordt vastgelegd, maar een logfout blokkeert de check niet', async () => {

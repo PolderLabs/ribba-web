@@ -39,7 +39,7 @@ async function sendMail(to: string, subject: string, html: string, emailType: st
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Ribba <noreply@ribba.app>',
+        from: 'Ribba <noreply@ribba.nl>',
         to,
         // BCC het team zodat we de aanvraag- en chat-notificatie-mails tussen
         // leerling en rijschool kunnen meelezen.

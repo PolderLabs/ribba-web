@@ -39,7 +39,7 @@ const { withSupportAccess, readAal } = await import('../lib/support-auth.ts');
 const { GET: schoolsGET } = await import('../app/api/support/schools/route.ts');
 const { GET: schoolGET } = await import('../app/api/support/schools/[id]/route.ts');
 
-const USER = { id: 'staff-1', email: 'support@ribba.app' };
+const USER = { id: 'staff-1', email: 'support@ribba.nl' };
 
 /** Token met een aal-claim. De handtekening doet er niet toe: getUser (server-side) valideert. */
 function token(aal) {
@@ -197,7 +197,7 @@ test('bevoegd → data terug, met een volledige logregel', async () => {
   const [log] = currentClient.logs;
   assert.equal(currentClient.logs.length, 1, 'precies één regel per handeling');
   assert.equal(log.staff_user_id, 'staff-1');
-  assert.equal(log.staff_email, 'support@ribba.app');
+  assert.equal(log.staff_email, 'support@ribba.nl');
   assert.equal(log.action, 'schools.list');
   assert.equal(log.level, 0);
   assert.equal(log.result, 'ok');

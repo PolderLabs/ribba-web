@@ -45,7 +45,7 @@ async function sendMail(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Ribba <noreply@ribba.app>',
+      from: 'Ribba <noreply@ribba.nl>',
       to,
       subject,
       html,
